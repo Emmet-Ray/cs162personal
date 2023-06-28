@@ -11,7 +11,8 @@ pthread: pthread.o
 words: words.o word_helpers.o word_count.o
 lwords: lwords.o word_count_l.o word_helpers.o list.o debug.o
 pwords: pwords.o word_count_p.o word_helpers.o list.o debug.o
-
+test: test.c word_count_l.o
+	gcc -g -o test test.c word_count.o
 $(EXECUTABLES):
 	$(CC) $(LDFLAGS) $^ -o $@
 
