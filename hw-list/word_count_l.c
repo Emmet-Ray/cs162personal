@@ -33,12 +33,7 @@ void init_words(word_count_list_t* wclist) { /* TODO */
 }
 
 size_t len_words(word_count_list_t* wclist) {
-  int cnt = 0;
-  struct list_elem *p;
-  for (p = list_begin(wclist); p != list_end(wclist); p = list_next(p)) {
-    cnt++;
-  }
-  return cnt;
+  return list_size(wclist);
 }
 
 word_count_t* find_word(word_count_list_t* wclist, char* word) {
@@ -61,6 +56,7 @@ word_count_t* add_word(word_count_list_t* wclist, char* word) {
   }
   tmp = (word_count_t *)malloc(sizeof(word_count_t));
   tmp->count = 1;
+  tmp->word = malloc(strlen(word) + 1);
   strcpy(tmp->word, word);
   list_push_front(wclist, &tmp->elem);  
   return tmp;
