@@ -114,14 +114,15 @@ int exec_programs(struct tokens* tokens) {
     //printf("%p, %s\n", tokens->tokens, tokens->tokens[0]);
     //execv(tokens_get_token(tokens, 0), &arguments);
     char* program_to_run = tokens_get_token(tokens, 0);
+    char* copy_program_to_run = (char*)malloc(strlen(program_to_run) + 1);
+    strcpy(copy_program_to_run, program_to_run);
+
     assert(strlen(program_to_run) > 1);
     if (program_to_run[0] == '/') {
       execv(program_to_run, tokens->tokens);
     } else {
       char* environment_path = getenv("PATH"); 
       // store the program name
-      char* copy_program_to_run = (char*)malloc(strlen(program_to_run) + 1);
-      strcpy(copy_program_to_run, program_to_run);
 
       char* saveptr;
       char dliem[] = ":";
@@ -139,7 +140,8 @@ int exec_programs(struct tokens* tokens) {
       }
     }
 
-    fprintf(stdout, "failed to execute %s\n", program_to_run);
+    fprintf(stdout, "failed to execute %s\n", copy_program_to_run);
+    exit(-1);
   } else {
     wait(&pid);
   }
