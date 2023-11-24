@@ -33,6 +33,7 @@ int cmd_exit(struct tokens* tokens);
 int cmd_help(struct tokens* tokens);
 int cmd_pwd(struct tokens* tokens);
 int cmd_cd(struct tokens* tokens);
+int exec_programs(struct tokens* tokens);
 
 /* Built-in command functions take token array (see parse.h) and return int */
 typedef int cmd_fun_t(struct tokens* tokens);
@@ -48,7 +49,7 @@ fun_desc_t cmd_table[] = {
     {cmd_help, "?", "show this help menu"},
     {cmd_exit, "exit", "exit the command shell"},
     {cmd_pwd, "pwd", "print current directory's absolute path"},
-    {cmd_cd, "cd", "usage : cd <directory path> , change directory"}
+    {cmd_cd, "cd", "usage : cd <directory path> , change directory"},
 };
 
 
@@ -84,11 +85,37 @@ int cmd_pwd(unused struct tokens* tokens) {
 
 /* change directory */
 int cmd_cd(struct tokens* tokens) {
-  assert(tokens->tokens_length == 2);
+  assert(tokens_get_length(tokens) == 2);
 
-  int failed = chdir(tokens->tokens[1]);
+  int failed = chdir(tokens_get_token(tokens, 1));
   if (failed) {
     printf("nu such directory : '%s'\n", tokens->tokens[1]); 
+  }
+  return 0;
+}
+
+
+int exec_programs(struct tokens* tokens) {
+  assert(tokens_get_length(tokens) > 0);
+
+  pid_t pid = fork();
+  if (pid == 0) {
+    //printf("%p, %s\n", &arguments, argument);
+    //printf("%p, %s\n", tokens->tokens, tokens->tokens[0]);
+    //execv(tokens_get_token(tokens, 0), &arguments);
+    execv(tokens_get_token(tokens, 0), tokens->tokens);
+
+  /*
+    char** argv = (char**) malloc(3 * sizeof(char*));
+    argv[0] = "/bin/ls";
+    argv[1] = ".";
+    argv[2] = NULL;
+    execv("/bin/ls", argv);
+  */
+
+    fprintf(stdout, "failed to execute %s\n", tokens_get_token(tokens, 0));
+  } else {
+    wait(&pid);
   }
   return 0;
 }
@@ -147,8 +174,10 @@ int main(unused int argc, unused char* argv[]) {
     if (fundex >= 0) {
       cmd_table[fundex].fun(tokens);
     } else {
-      /* REPLACE this to run commands as programs. */
-      fprintf(stdout, "This shell doesn't know how to run programs.\n");
+      // try to run as programs
+      if (tokens_get_length(tokens) > 0) {
+        exec_programs(tokens);
+      }
     }
 
     if (shell_is_interactive)
