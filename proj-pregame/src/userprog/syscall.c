@@ -10,6 +10,7 @@ static void syscall_handler(struct intr_frame*);
 
 void syscall_init(void) { intr_register_int(0x30, 3, INTR_ON, syscall_handler, "syscall"); }
 int syscall_write(int fd, const void *buffer, unsigned size);
+int practice(int i);
 
 static void syscall_handler(struct intr_frame* f UNUSED) {
   uint32_t* args = ((uint32_t*)f->esp);
@@ -42,18 +43,22 @@ static void syscall_handler(struct intr_frame* f UNUSED) {
 
     int result = syscall_write(fd, buffer, size);
     f->eax = result;
+  } else if (args[0] == SYS_PRACTICE) {
+    //printf("<1>\n");
+    int integer = args[1];
+    f->eax = practice(integer);
   }
 }
 
 int syscall_write(int fd, const void *buffer, unsigned size) {
-    //printf("fd : %d, buffer : %s, size : %d\n", fd, (char*)buffer, size);
     int result = size;
     if (fd == 1) {
       // STDOUT 
-      //printf("<1>\n");
       putbuf(buffer, size);
-      //printf("<2>\n");
     }
     
     return result;
+}
+int practice(int i) {
+  return i + 1;
 }

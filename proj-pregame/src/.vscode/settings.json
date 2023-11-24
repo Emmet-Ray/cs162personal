@@ -1,5 +1,14 @@
 {
     "files.associations": {
-        "string.h": "c"
+        "string.h": "c",
+        "*.tcc": "c",
+        "exception": "c",
+        "memory_resource": "c",
+        "iosfwd": "c",
+        "new": "c",
+        "ostream": "c",
+        "streambuf": "c",
+        "*.inc": "c",
+        "pthread.h": "c"
     }
 }

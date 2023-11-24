@@ -51,6 +51,7 @@ void userprog_init(void) {
    before process_execute() returns.  Returns the new process's
    process id, or TID_ERROR if the thread cannot be created. */
 pid_t process_execute(const char* file_name) {
+  printf("file name : %s\n", file_name);
   char* fn_copy;
   tid_t tid;
 
@@ -80,7 +81,7 @@ static void start_process(void* file_name_) {
   /* Allocate process control block */
   struct process* new_pcb = malloc(sizeof(struct process));
   success = pcb_success = new_pcb != NULL;
-
+  
   /* Initialize process control block */
   if (success) {
     // Ensure that timer_interrupt() -> schedule() -> process_activate()
@@ -283,11 +284,13 @@ bool load(const char* file_name, void (**eip)(void), void** esp) {
   process_activate();
 
   /* Open executable file. */
+  //printf("<>file_name : %s\n", file_name);
   file = filesys_open(file_name);
   if (file == NULL) {
     printf("load: %s: open failed\n", file_name);
     goto done;
   }
+  //printf("<>open '%s' successfully\n", file_name);
 
   /* Read and verify executable header. */
   if (file_read(file, &ehdr, sizeof ehdr) != sizeof ehdr ||
@@ -466,14 +469,31 @@ static bool load_segment(struct file* file, off_t ofs, uint8_t* upage, uint32_t 
 /* Create a minimal stack by mapping a zeroed page at the top of
    user virtual memory. */
 static bool setup_stack(void** esp) {
+  printf("<>thread_name : %s\n", thread_name());
   uint8_t* kpage;
   bool success = false;
 
   kpage = palloc_get_page(PAL_USER | PAL_ZERO);
   if (kpage != NULL) {
+    // test code
+    //printf("<>PHY_BASE : %p\n", PHYS_BASE);
     success = install_page(((uint8_t*)PHYS_BASE) - PGSIZE, kpage, true);
+    *(kpage + PGSIZE - 1) = '1'; // the top of the stack : kpage + PGSIZE
+    char* name = thread_name();
+    int len = strlen(name) + 1;
+    uint8_t* dest = (char*) kpage + PGSIZE - len;
+    //strlcpy(dest, name, len); 
+    uint32_t* addresss = dest;
+    uint32_t add = (uint32_t)PHYS_BASE - len;
+    memset((char*)addresss - 11, 0, 11);
+    addresss = dest - 7;
+    *--addresss = 0;
+    *--addresss = add;
+    *--addresss = 1;
+    memcpy(dest, name, len);
+
     if (success)
-      *esp = PHYS_BASE - 0x14; // -20
+      *esp = PHYS_BASE - 0x20; // the offset is variable : 1. number of args, 2. stack-aligned
     else
       palloc_free_page(kpage);
   }
