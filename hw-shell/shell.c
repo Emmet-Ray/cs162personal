@@ -53,11 +53,21 @@ fun_desc_t cmd_table[] = {
 };
 
 
+/* helper function to get absolute path */
+void get_absolute_path(char absolute_path[], char path[], char program[]) {
+        absolute_path[0] = '\0';
+        strcat(absolute_path, path);
+        strcat(absolute_path, "/");
+        strcat(absolute_path, program);
+}
+
+/* helper function to print error & exit */
 void failed_to_error_exit(char* message) {
     fprintf(stdout, "failed to %s\n", message);
     exit(0);
 }
 
+/* helper function to print error */
 void failed_to_error(char* message) {
     fprintf(stdout, "failed to %s\n", message);
 }
@@ -103,17 +113,33 @@ int exec_programs(struct tokens* tokens) {
     //printf("%p, %s\n", &arguments, argument);
     //printf("%p, %s\n", tokens->tokens, tokens->tokens[0]);
     //execv(tokens_get_token(tokens, 0), &arguments);
-    execv(tokens_get_token(tokens, 0), tokens->tokens);
+    char* program_to_run = tokens_get_token(tokens, 0);
+    assert(strlen(program_to_run) > 1);
+    if (program_to_run[0] == '/') {
+      execv(program_to_run, tokens->tokens);
+    } else {
+      char* environment_path = getenv("PATH"); 
+      // store the program name
+      char* copy_program_to_run = (char*)malloc(strlen(program_to_run) + 1);
+      strcpy(copy_program_to_run, program_to_run);
 
-  /*
-    char** argv = (char**) malloc(3 * sizeof(char*));
-    argv[0] = "/bin/ls";
-    argv[1] = ".";
-    argv[2] = NULL;
-    execv("/bin/ls", argv);
-  */
+      char* saveptr;
+      char dliem[] = ":";
+      char* current_directory;
+      char absolute_path[1024];
+      for (current_directory = strtok_r(environment_path, dliem, &saveptr); current_directory != NULL; current_directory = strtok_r(NULL, dliem, &saveptr)) {
+        get_absolute_path(absolute_path, current_directory, copy_program_to_run);
 
-    fprintf(stdout, "failed to execute %s\n", tokens_get_token(tokens, 0));
+        // change the program to absolute path
+        free(tokens->tokens[0]);
+        tokens->tokens[0] = (char*) malloc(strlen(absolute_path) + 1);
+        strcpy(tokens->tokens[0], absolute_path);
+        //printf("%s\n", tokens->tokens[0]);
+        execv(tokens_get_token(tokens, 0), tokens->tokens);
+      }
+    }
+
+    fprintf(stdout, "failed to execute %s\n", program_to_run);
   } else {
     wait(&pid);
   }
@@ -163,6 +189,7 @@ int main(unused int argc, unused char* argv[]) {
   /* Please only print shell prompts when standard input is not a tty */
   if (shell_is_interactive)
     fprintf(stdout, "%d: ", line_num);
+
 
   while (fgets(line, 4096, stdin)) {
     /* Split our line into words. */
