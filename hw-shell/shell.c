@@ -160,6 +160,9 @@ int exec_programs(struct tokens* tokens) {
           if ((new_fd = open(file_name, O_RDONLY)) < 0) {
             fprintf(stderr, "redirect failed: couldn't open file '%s'\n", file_name);
           }
+          if (dup2(new_fd, STDIN_FILENO) < 0) {
+            fprintf(stderr, "redirect failed: dup2 failed\n");
+          }
         }
     }
     // malloced in [pre_redirect()]
