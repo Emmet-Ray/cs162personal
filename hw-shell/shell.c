@@ -102,9 +102,13 @@ int cmd_cd(struct tokens* tokens) {
   return 0;
 }
 
-/** try to redirect if [tokens] contains '<' or '>' and there is a file name after it
+/**
+ *  try to find '<' or '>' and the [file_name]
  * 
+ *  if find return the [file_name]
+ *  if find '>', change [redirect_output] to true
  * 
+ *  cut the tokens from '<' / '>' if any 
 */
 
 char* pre_redirect(struct tokens* tokens, bool* redirect_output) {
@@ -136,6 +140,29 @@ char* pre_redirect(struct tokens* tokens, bool* redirect_output) {
   return file_name;
 }
 
+/** 
+ *  if [redirect_output] redirect STDOUT_FILENO to file_name's fd
+ *  else redirect STDIN_FILENO to file_name's fd
+*/
+void redirect(char* file_name, bool redirect_output) {
+  int new_fd;
+  if (redirect_output) {
+    if ((new_fd = open(file_name, O_WRONLY)) < 0) {
+      fprintf(stderr, "redirect failed: couldn't open file '%s'\n", file_name);
+    }
+    if (dup2(new_fd, STDOUT_FILENO) < 0) {
+      fprintf(stderr, "redirect failed: dup2 failed\n");
+    }
+  } else {
+    if ((new_fd = open(file_name, O_RDONLY)) < 0) {
+      fprintf(stderr, "redirect failed: couldn't open file '%s'\n", file_name);
+    }
+    if (dup2(new_fd, STDIN_FILENO) < 0) {
+      fprintf(stderr, "redirect failed: dup2 failed\n");
+    }
+  }
+}
+
 
 int exec_programs(struct tokens* tokens) {
   assert(tokens_get_length(tokens) > 0);
@@ -148,22 +175,7 @@ int exec_programs(struct tokens* tokens) {
   if (pid == 0) {
     //redirect
     if (file_name != NULL) {
-        int new_fd;
-        if (redirect_output) {
-          if ((new_fd = open(file_name, O_WRONLY)) < 0) {
-            fprintf(stderr, "redirect failed: couldn't open file '%s'\n", file_name);
-          }
-          if (dup2(new_fd, STDOUT_FILENO) < 0) {
-            fprintf(stderr, "redirect failed: dup2 failed\n");
-          }
-        } else {
-          if ((new_fd = open(file_name, O_RDONLY)) < 0) {
-            fprintf(stderr, "redirect failed: couldn't open file '%s'\n", file_name);
-          }
-          if (dup2(new_fd, STDIN_FILENO) < 0) {
-            fprintf(stderr, "redirect failed: dup2 failed\n");
-          }
-        }
+        redirect(file_name, redirect_output); 
     }
     // malloced in [pre_redirect()]
     free(file_name);
