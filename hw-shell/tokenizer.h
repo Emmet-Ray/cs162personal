@@ -1,4 +1,5 @@
 #pragma once
+#include <stdio.h>
 
 /* A struct that represents a list of words. */
 struct tokens {
@@ -19,3 +20,6 @@ char* tokens_get_token(struct tokens* tokens, size_t n);
 
 /* Free the memory */
 void tokens_destroy(struct tokens* tokens);
+
+/* print tokens */
+void tokens_print(struct tokens* tokens);

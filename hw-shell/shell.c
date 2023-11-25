@@ -3,7 +3,6 @@
 #include <errno.h>
 #include <fcntl.h>
 #include <stdbool.h>
-#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <sys/types.h>
@@ -16,7 +15,6 @@
 
 /* Convenience macro to silence compiler warnings about unused function parameters. */
 #define unused __attribute__((unused))
-
 /* Whether the shell is connected to an actual terminal or not. */
 bool shell_is_interactive;
 
@@ -104,23 +102,79 @@ int cmd_cd(struct tokens* tokens) {
   return 0;
 }
 
+/** try to redirect if [tokens] contains '<' or '>' and there is a file name after it
+ * 
+ * 
+*/
+
+char* pre_redirect(struct tokens* tokens, bool* redirect_output) {
+  int len = tokens_get_length(tokens);
+  char* pointer;
+  char* file_name = NULL;
+  for(int i = 0; i < len; i++) {
+    pointer = tokens_get_token(tokens, i);
+    if (strcmp(pointer, ">") == 0 || strcmp(pointer, "<") == 0) {
+      // maybe there is no file name after the redirection symbol
+      if (i + 1 < len) {
+        char* file = tokens_get_token(tokens, i + 1);
+        file_name = (char*) malloc(strlen(file) + 1);
+        strcpy(file_name, file);
+        if (strcmp(pointer, ">") == 0) {
+          *redirect_output = true;  
+        }
+      } 
+      // free the token  '<' or '>' and after token(s)
+      for (int j = i; j < len; j++) {
+        free(tokens->tokens[j]);
+      }
+      // set tokens[i] = NULL & tokens_length
+      tokens->tokens_length = i;
+      tokens->tokens[i] = NULL;
+      break;
+    }
+  }
+  return file_name;
+}
+
 
 int exec_programs(struct tokens* tokens) {
   assert(tokens_get_length(tokens) > 0);
 
+  // redirection stdin or stdout
+  bool redirect_output = false;
+  char* file_name = pre_redirect(tokens, &redirect_output);
+
   pid_t pid = fork();
   if (pid == 0) {
-    //printf("%p, %s\n", &arguments, argument);
-    //printf("%p, %s\n", tokens->tokens, tokens->tokens[0]);
-    //execv(tokens_get_token(tokens, 0), &arguments);
+    //redirect
+    if (file_name != NULL) {
+        int new_fd;
+        if (redirect_output) {
+          if ((new_fd = open(file_name, O_WRONLY)) < 0) {
+            fprintf(stderr, "redirect failed: couldn't open file '%s'\n", file_name);
+          }
+          if (dup2(new_fd, STDOUT_FILENO) < 0) {
+            fprintf(stderr, "redirect failed: dup2 failed\n");
+          }
+        } else {
+          if ((new_fd = open(file_name, O_RDONLY)) < 0) {
+            fprintf(stderr, "redirect failed: couldn't open file '%s'\n", file_name);
+          }
+        }
+    }
+    // malloced in [pre_redirect()]
+    free(file_name);
+
     char* program_to_run = tokens_get_token(tokens, 0);
     char* copy_program_to_run = (char*)malloc(strlen(program_to_run) + 1);
     strcpy(copy_program_to_run, program_to_run);
 
     assert(strlen(program_to_run) > 1);
     if (program_to_run[0] == '/') {
+      // absolute path
       execv(program_to_run, tokens->tokens);
     } else {
+      // path resolution
       char* environment_path = getenv("PATH"); 
       // store the program name
 

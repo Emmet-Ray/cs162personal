@@ -121,3 +121,12 @@ void tokens_destroy(struct tokens* tokens) {
   }
   free(tokens);
 }
+
+void tokens_print(struct tokens* tokens) {
+  int len = tokens_get_length(tokens);
+  printf("len : %d\n", len);
+  for(int i = 0; i < len; i++) {
+    printf("%s  ", tokens->tokens[i]);
+  }
+  printf("\n");
+}
