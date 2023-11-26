@@ -4,6 +4,7 @@
 #include <fcntl.h>
 #include <stdbool.h>
 #include <stdlib.h>
+#include <stdio.h>
 #include <string.h>
 #include <sys/types.h>
 #include <signal.h>
@@ -32,6 +33,10 @@ int cmd_help(struct tokens* tokens);
 int cmd_pwd(struct tokens* tokens);
 int cmd_cd(struct tokens* tokens);
 int exec_programs(struct tokens* tokens);
+char* pre_redirect(struct tokens* tokens, bool* redirect_output); 
+void redirect(char* file_name, bool redirect_output);
+
+int find_num_pipes(struct tokens* tokens);
 
 /* Built-in command functions take token array (see parse.h) and return int */
 typedef int cmd_fun_t(struct tokens* tokens);
@@ -163,6 +168,23 @@ void redirect(char* file_name, bool redirect_output) {
   }
 }
 
+int find_num_pipes(struct tokens* tokens) {
+  int len = tokens_get_length(tokens);
+  int result = 0;
+  for(int i = 0; i < len; i++) {
+    if (strcmp(tokens_get_token(tokens, i), "|") == 0) {
+      result++;
+    }
+  }
+  return result;
+}
+
+void close_pipes_array(int** pipe_array, int num_pipes) {
+    for(int i = 0; i < num_pipes; i++) {
+      close(pipe_array[i][0]);
+      close(pipe_array[i][1]);
+    }
+}
 
 int exec_programs(struct tokens* tokens) {
   assert(tokens_get_length(tokens) > 0);
@@ -171,48 +193,107 @@ int exec_programs(struct tokens* tokens) {
   bool redirect_output = false;
   char* file_name = pre_redirect(tokens, &redirect_output);
 
-  pid_t pid = fork();
-  if (pid == 0) {
-    //redirect
-    if (file_name != NULL) {
-        redirect(file_name, redirect_output); 
+  // deal with pipes 
+  int num_pipes = find_num_pipes(tokens);
+  int num_child_processes = num_pipes + 1;
+  printf("num_pipes : %d\n", num_pipes);
+  if (num_pipes != 0) {
+    int** pipe_array = (int**) malloc(num_pipes * sizeof(int*));   
+    for(int i = 0; i < num_pipes; i++) {
+      pipe_array[i] = (int*) malloc(2 * sizeof(int));
+      pipe(pipe_array[i]);
     }
-    // malloced in [pre_redirect()]
-    free(file_name);
 
-    char* program_to_run = tokens_get_token(tokens, 0);
-    char* copy_program_to_run = (char*)malloc(strlen(program_to_run) + 1);
-    strcpy(copy_program_to_run, program_to_run);
+    for(int i = 0; i < num_child_processes; i++) {
+      //printf("fork, i : %d\n", i);
+      pid_t pid = fork();
+      if (pid == 0) {
+        if (i == 0) {
+          printf("<1\n");
+          printf("i = %d, %d\n", i, pipe_array[i][1]);
+          if (dup2(pipe_array[i][1], STDOUT_FILENO) < 0) {
+            fprintf(stderr, "pipes, i = %d : dup2 failed\n", i);
+          }
+          close_pipes_array(pipe_array, num_pipes);
 
-    assert(strlen(program_to_run) > 1);
-    if (program_to_run[0] == '/') {
-      // absolute path
-      execv(program_to_run, tokens->tokens);
-    } else {
-      // path resolution
-      char* environment_path = getenv("PATH"); 
-      // store the program name
+          /*
+          int len = tokens_get_length(tokens);
+          for(int j = 0; j < len; j++) {
 
-      char* saveptr;
-      char dliem[] = ":";
-      char* current_directory;
-      char absolute_path[1024];
-      for (current_directory = strtok_r(environment_path, dliem, &saveptr); current_directory != NULL; current_directory = strtok_r(NULL, dliem, &saveptr)) {
-        get_absolute_path(absolute_path, current_directory, copy_program_to_run);
+          }
+          */
+          printf("1>\n");
+          close(STDOUT_FILENO);
+        } else if (i == num_child_processes - 1) {
+          printf("<2\n");
+          printf("i = %d, %d\n", i, pipe_array[i - 1][0]);
+          if (dup2(pipe_array[i - 1][0], STDIN_FILENO) < 0) {
+            fprintf(stderr, "pipes, i = %d : dup2 failed\n", i);
+          }
+          close_pipes_array(pipe_array, num_pipes);
 
-        // change the program to absolute path
-        free(tokens->tokens[0]);
-        tokens->tokens[0] = (char*) malloc(strlen(absolute_path) + 1);
-        strcpy(tokens->tokens[0], absolute_path);
-        //printf("%s\n", tokens->tokens[0]);
-        execv(tokens_get_token(tokens, 0), tokens->tokens);
+          char buffer[1024];
+          read(STDIN_FILENO, buffer, 1024);
+          printf("buffer : %s", buffer);
+          printf("2>\n");
+
+          close(STDIN_FILENO);
+        } else {
+
+        }
       }
     }
 
-    fprintf(stdout, "failed to execute %s\n", copy_program_to_run);
-    exit(-1);
+    close_pipes_array(pipe_array, num_pipes);
+    int terminated_pid;
+    while((terminated_pid = waitpid(-1, NULL, 0)) > 0) {
+      printf("terminated_pid : %d\n", terminated_pid); 
+    }
+    printf("all child process exit\n");
   } else {
-    wait(&pid);
+    pid_t pid = fork();
+    if (pid == 0) {
+      //redirect
+      if (file_name != NULL) {
+          redirect(file_name, redirect_output); 
+      }
+      // malloced in [pre_redirect()]
+      free(file_name);
+
+      char* program_to_run = tokens_get_token(tokens, 0);
+      char* copy_program_to_run = (char*)malloc(strlen(program_to_run) + 1);
+      strcpy(copy_program_to_run, program_to_run);
+
+      assert(strlen(program_to_run) > 1);
+      if (program_to_run[0] == '/') {
+        // absolute path
+        execv(program_to_run, tokens->tokens);
+      } else {
+        // path resolution
+        char* environment_path = getenv("PATH"); 
+        // store the program name
+
+        char* saveptr;
+        char dliem[] = ":";
+        char* current_directory;
+        char absolute_path[1024];
+        for (current_directory = strtok_r(environment_path, dliem, &saveptr); current_directory != NULL; current_directory = strtok_r(NULL, dliem, &saveptr)) {
+          get_absolute_path(absolute_path, current_directory, copy_program_to_run);
+
+          // change the program to absolute path
+          free(tokens->tokens[0]);
+          tokens->tokens[0] = (char*) malloc(strlen(absolute_path) + 1);
+          strcpy(tokens->tokens[0], absolute_path);
+          //printf("%s\n", tokens->tokens[0]);
+          execv(tokens_get_token(tokens, 0), tokens->tokens);
+        }
+      }
+
+      fprintf(stdout, "failed to execute %s\n", copy_program_to_run);
+      exit(-1);
+    } else {
+      wait(&pid);
+    }
   }
   return 0;
 }

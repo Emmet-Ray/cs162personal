@@ -1,5 +1,4 @@
 #pragma once
-#include <stdio.h>
 
 /* A struct that represents a list of words. */
 struct tokens {
