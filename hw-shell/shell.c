@@ -228,6 +228,11 @@ void close_pipes_array(int** pipe_array, int num_pipes) {
     }
 }
 
+/**
+ * helper function for pipes command
+ * find and set the arguments after the [i]th "|"
+*/
+
 void find_execv_arguments(struct tokens* tokens, char** exe_name, char*** arguments, int i) {
           int len = tokens_get_length(tokens);
           int cnt = 0; // num of "|"
@@ -247,10 +252,6 @@ void find_execv_arguments(struct tokens* tokens, char** exe_name, char*** argume
                 current = tokens_get_token(tokens, index);
               }
               
-              /*
-              if (i == 1) {
-                fprintf(stderr, "arguments_cnt : %d\n", arguments_cnt);
-              }
               */
               //fprintf(stderr, "1 : %s   2 : %s\n", tokens_get_token(tokens, j), tokens_get_token(tokens, j + 1));
               //fprintf(stderr, "arguments_cnt : %d\n", arguments_cnt);
@@ -275,6 +276,12 @@ void find_execv_arguments(struct tokens* tokens, char** exe_name, char*** argume
           }
           fprintf(stderr, "***\n");
           */
+}
+
+void dup2_wrapper(int src, int dest) {
+  if (dup2(src, dest) < 0) {
+    fprintf(stderr, "pipes: dup2 failed\n");
+  }
 }
 
 int exec_programs(struct tokens* tokens) {
@@ -302,20 +309,12 @@ int exec_programs(struct tokens* tokens) {
       pid_t pid = fork();
       if (pid == 0) {
         if (i == 0) {
-          if (dup2(pipe_array[i][1], STDOUT_FILENO) < 0) {
-            fprintf(stderr, "pipes, i = %d : dup2 failed\n", i);
-          }
+          dup2_wrapper(pipe_array[i][1], STDOUT_FILENO);
         } else if (i == num_child_processes - 1) {
-          if (dup2(pipe_array[i - 1][0], STDIN_FILENO) < 0) {
-            fprintf(stderr, "pipes, i = %d : dup2 failed\n", i);
-          }
+          dup2_wrapper(pipe_array[i - 1][0], STDIN_FILENO);
         } else {
-          if (dup2(pipe_array[i - 1][0], STDIN_FILENO) < 0) {
-            fprintf(stderr, "pipes, i = %d : dup2 failed\n", i);
-          }
-          if (dup2(pipe_array[i][1], STDOUT_FILENO) < 0) {
-            fprintf(stderr, "pipes, i = %d : dup2 failed\n", i);
-          }
+          dup2_wrapper(pipe_array[i - 1][0], STDIN_FILENO);
+          dup2_wrapper(pipe_array[i][1], STDOUT_FILENO);
         }
           close_pipes_array(pipe_array, num_pipes);
           find_execv_arguments(tokens, &exe_name, &arguments, i);
