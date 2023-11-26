@@ -171,8 +171,43 @@ void redirect(char* file_name, bool redirect_output) {
   }
 }
 
-void exec_programs_helper(char* exe_name, char** arguments) {
+/**
+ *  execv(program_to_run, arguments) 
+ *  with path resolution 
+*/
 
+void exec_programs_helper(char* program_to_run, char** arguments) {
+      char* copy_program_to_run = NULL;
+
+      assert(strlen(program_to_run) > 1);
+      if (program_to_run[0] == '/') {
+        // absolute path
+        execv(program_to_run, arguments);
+      } else {
+        // store the program name
+        copy_program_to_run = (char*)malloc(strlen(program_to_run) + 1);
+        strcpy(copy_program_to_run, program_to_run);
+        // path resolution
+        char* environment_path = getenv("PATH"); 
+
+        char* saveptr;
+        char dliem[] = ":";
+        char* current_directory;
+        char absolute_path[1024];
+        for (current_directory = strtok_r(environment_path, dliem, &saveptr); current_directory != NULL; current_directory = strtok_r(NULL, dliem, &saveptr)) {
+          get_absolute_path(absolute_path, current_directory, copy_program_to_run);
+
+          // change the program to absolute path
+          free(arguments[0]);
+          arguments[0] = (char*) malloc(strlen(absolute_path) + 1);
+          strcpy(arguments[0], absolute_path);
+          //printf("%s\n", arguments[0]);
+          execv(arguments[0], arguments);
+        }
+      }
+
+      fprintf(stdout, "failed to execute %s\n", copy_program_to_run);
+      exit(-1);
 }
 
 int find_num_pipes(struct tokens* tokens) {
@@ -205,18 +240,25 @@ void find_execv_arguments(struct tokens* tokens, char** exe_name, char*** argume
               //fprintf(stderr, "exe_name : %s\n", exe_name);
               int arguments_cnt = 1;
               int index = j + arguments_cnt;
+              current = tokens_get_token(tokens, index);
               while (index < len && strcmp(current, "|") != 0) {
                 arguments_cnt++; 
                 index = j + arguments_cnt;
                 current = tokens_get_token(tokens, index);
               }
+              
+              /*
+              if (i == 1) {
+                fprintf(stderr, "arguments_cnt : %d\n", arguments_cnt);
+              }
+              */
               //fprintf(stderr, "1 : %s   2 : %s\n", tokens_get_token(tokens, j), tokens_get_token(tokens, j + 1));
               //fprintf(stderr, "arguments_cnt : %d\n", arguments_cnt);
 
               *arguments = (char**) malloc((arguments_cnt + 1) * sizeof(char *)); 
               (*arguments)[0] = *exe_name;
               for (int k = 1; k < arguments_cnt; k++) {
-                (*arguments)[k] = tokens_get_token(tokens, j + 1);
+                (*arguments)[k] = tokens_get_token(tokens, j + k);
               }
               (*arguments)[arguments_cnt] = NULL;
               break;
@@ -226,11 +268,12 @@ void find_execv_arguments(struct tokens* tokens, char** exe_name, char*** argume
               }  
             }
           }
-/*
+          /*
+          fprintf(stderr, "i = %d\n", i); 
           for (int l = 0; (*arguments)[l] != NULL; l++) {
             fprintf(stderr, "%s  ", (*arguments)[l]);
           }
-          fprintf(stderr, "\n");
+          fprintf(stderr, "***\n");
           */
 }
 
@@ -262,21 +305,21 @@ int exec_programs(struct tokens* tokens) {
           if (dup2(pipe_array[i][1], STDOUT_FILENO) < 0) {
             fprintf(stderr, "pipes, i = %d : dup2 failed\n", i);
           }
-          close_pipes_array(pipe_array, num_pipes);
-
-          find_execv_arguments(tokens, &exe_name, &arguments, i);
-          execvp(exe_name, arguments);
         } else if (i == num_child_processes - 1) {
           if (dup2(pipe_array[i - 1][0], STDIN_FILENO) < 0) {
             fprintf(stderr, "pipes, i = %d : dup2 failed\n", i);
           }
-          close_pipes_array(pipe_array, num_pipes);
-
-          find_execv_arguments(tokens, &exe_name, &arguments, i);
-          execvp(exe_name, arguments);
         } else {
-
+          if (dup2(pipe_array[i - 1][0], STDIN_FILENO) < 0) {
+            fprintf(stderr, "pipes, i = %d : dup2 failed\n", i);
+          }
+          if (dup2(pipe_array[i][1], STDOUT_FILENO) < 0) {
+            fprintf(stderr, "pipes, i = %d : dup2 failed\n", i);
+          }
         }
+          close_pipes_array(pipe_array, num_pipes);
+          find_execv_arguments(tokens, &exe_name, &arguments, i);
+          exec_programs_helper(exe_name, arguments);
       }
     }
       close_pipes_array(pipe_array, num_pipes);
@@ -296,36 +339,7 @@ int exec_programs(struct tokens* tokens) {
       free(file_name);
 
       char* program_to_run = tokens_get_token(tokens, 0);
-      char* copy_program_to_run = (char*)malloc(strlen(program_to_run) + 1);
-      strcpy(copy_program_to_run, program_to_run);
-
-      assert(strlen(program_to_run) > 1);
-      if (program_to_run[0] == '/') {
-        // absolute path
-        execv(program_to_run, tokens->tokens);
-      } else {
-        // path resolution
-        char* environment_path = getenv("PATH"); 
-        // store the program name
-
-        char* saveptr;
-        char dliem[] = ":";
-        char* current_directory;
-        char absolute_path[1024];
-        for (current_directory = strtok_r(environment_path, dliem, &saveptr); current_directory != NULL; current_directory = strtok_r(NULL, dliem, &saveptr)) {
-          get_absolute_path(absolute_path, current_directory, copy_program_to_run);
-
-          // change the program to absolute path
-          free(tokens->tokens[0]);
-          tokens->tokens[0] = (char*) malloc(strlen(absolute_path) + 1);
-          strcpy(tokens->tokens[0], absolute_path);
-          //printf("%s\n", tokens->tokens[0]);
-          execv(tokens_get_token(tokens, 0), tokens->tokens);
-        }
-      }
-
-      fprintf(stdout, "failed to execute %s\n", copy_program_to_run);
-      exit(-1);
+      exec_programs_helper(program_to_run, tokens->tokens);
     } else {
       wait(&pid);
     }

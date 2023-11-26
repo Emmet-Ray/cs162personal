@@ -1,7 +1,5 @@
-Makefile
-hello.txt
-shell
-shell.c
+  430  1568 13307 shell.c
+hell.c
 shell.o
 tokenizer.c
 tokenizer.h
