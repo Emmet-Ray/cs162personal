@@ -35,9 +35,11 @@ int cmd_cd(struct tokens* tokens);
 int exec_programs(struct tokens* tokens);
 char* pre_redirect(struct tokens* tokens, bool* redirect_output); 
 void redirect(char* file_name, bool redirect_output);
+void exec_programs_helper(char* exe_name, char** arguments);
 
 int find_num_pipes(struct tokens* tokens);
 void close_pipes_array(int** pipe_array, int num_pipes);
+void find_execv_arguments(struct tokens* token, char** exe_name, char*** arguments, int j);
 
 /* Built-in command functions take token array (see parse.h) and return int */
 typedef int cmd_fun_t(struct tokens* tokens);
@@ -169,6 +171,10 @@ void redirect(char* file_name, bool redirect_output) {
   }
 }
 
+void exec_programs_helper(char* exe_name, char** arguments) {
+
+}
+
 int find_num_pipes(struct tokens* tokens) {
   int len = tokens_get_length(tokens);
   int result = 0;
@@ -185,6 +191,47 @@ void close_pipes_array(int** pipe_array, int num_pipes) {
       close(pipe_array[i][0]);
       close(pipe_array[i][1]);
     }
+}
+
+void find_execv_arguments(struct tokens* tokens, char** exe_name, char*** arguments, int i) {
+          int len = tokens_get_length(tokens);
+          int cnt = 0; // num of "|"
+          char* current = NULL;
+          for(int j = 0; j < len; j++) {
+            current = tokens_get_token(tokens, j);
+            if (cnt == i) {
+              // begin collecting the arguments
+              *exe_name = current;
+              //fprintf(stderr, "exe_name : %s\n", exe_name);
+              int arguments_cnt = 1;
+              int index = j + arguments_cnt;
+              while (index < len && strcmp(current, "|") != 0) {
+                arguments_cnt++; 
+                index = j + arguments_cnt;
+                current = tokens_get_token(tokens, index);
+              }
+              //fprintf(stderr, "1 : %s   2 : %s\n", tokens_get_token(tokens, j), tokens_get_token(tokens, j + 1));
+              //fprintf(stderr, "arguments_cnt : %d\n", arguments_cnt);
+
+              *arguments = (char**) malloc((arguments_cnt + 1) * sizeof(char *)); 
+              (*arguments)[0] = *exe_name;
+              for (int k = 1; k < arguments_cnt; k++) {
+                (*arguments)[k] = tokens_get_token(tokens, j + 1);
+              }
+              (*arguments)[arguments_cnt] = NULL;
+              break;
+            } else {
+              if (strcmp(current, "|") == 0) {
+                cnt++;
+              }  
+            }
+          }
+/*
+          for (int l = 0; (*arguments)[l] != NULL; l++) {
+            fprintf(stderr, "%s  ", (*arguments)[l]);
+          }
+          fprintf(stderr, "\n");
+          */
 }
 
 int exec_programs(struct tokens* tokens) {
@@ -205,9 +252,10 @@ int exec_programs(struct tokens* tokens) {
       pipe(pipe_array[i]);
     }
 
-    int len = tokens_get_length(tokens);
     for(int i = 0; i < num_child_processes; i++) {
       //printf("fork, i : %d\n", i);
+      char* exe_name = NULL;
+      char** arguments = NULL;
       pid_t pid = fork();
       if (pid == 0) {
         if (i == 0) {
@@ -216,124 +264,27 @@ int exec_programs(struct tokens* tokens) {
           }
           close_pipes_array(pipe_array, num_pipes);
 
-          int cnt = 0; // num of "|"
-          char* current = NULL;
-          char* exe_name = NULL;
-          char** arguments = NULL;
-          for(int j = 0; j < len; j++) {
-            current = tokens_get_token(tokens, j);
-            if (cnt == i) {
-              // begin collecting the arguments
-              exe_name = current;
-              //fprintf(stderr, "exe_name : %s\n", exe_name);
-              int arguments_cnt = 1;
-              int index = j + arguments_cnt;
-              while (index < len && strcmp(current, "|") != 0) {
-                arguments_cnt++; 
-                index = j + arguments_cnt;
-                current = tokens_get_token(tokens, index);
-              }
-              //fprintf(stderr, "1 : %s   2 : %s\n", tokens_get_token(tokens, j), tokens_get_token(tokens, j + 1));
-              //fprintf(stderr, "arguments_cnt : %d\n", arguments_cnt);
-
-              arguments = (char**) malloc((arguments_cnt + 1) * sizeof(char *)); 
-              arguments[0] = exe_name;
-              for (int k = 1; k < arguments_cnt; k++) {
-                arguments[k] = tokens_get_token(tokens, j + 1);
-              }
-              arguments[arguments_cnt] = NULL;
-
-
-
-              break;
-            } else {
-              if (strcmp(current, "|") == 0) {
-                cnt++;
-              }  
-            }
-          }
+          find_execv_arguments(tokens, &exe_name, &arguments, i);
           execvp(exe_name, arguments);
-  /*      
-          for (int l = 0; arguments[l] != NULL; l++) {
-            fprintf(stderr, "%s  ", arguments[l]);
-          }
-          fprintf(stderr, "\n");
-          */
-
-          close(STDOUT_FILENO);
-          exit(0);
         } else if (i == num_child_processes - 1) {
           if (dup2(pipe_array[i - 1][0], STDIN_FILENO) < 0) {
             fprintf(stderr, "pipes, i = %d : dup2 failed\n", i);
           }
           close_pipes_array(pipe_array, num_pipes);
-/*
-          char recivede_buffer[1024];
-          read(STDIN_FILENO, recivede_buffer, 1024);
-          printf("recive : %s\n", recivede_buffer);
-          */
 
-          int cnt = 0; // num of "|"
-          char* current = NULL;
-          char* exe_name = NULL;
-          char** arguments = NULL;
-          for(int j = 0; j < len; j++) {
-            current = tokens_get_token(tokens, j);
-            if (cnt == i) {
-              // begin collecting the arguments
-              exe_name = current;
-              //fprintf(stderr, "exe_name : %s\n", exe_name);
-              int arguments_cnt = 1;
-              int index = j + arguments_cnt;
-              while (index < len && strcmp(current, "|") != 0) {
-                arguments_cnt++; 
-                index = j + arguments_cnt;
-                current = tokens_get_token(tokens, index);
-              }
-              //fprintf(stderr, "1 : %s   2 : %s\n", tokens_get_token(tokens, j), tokens_get_token(tokens, j + 1));
-              //fprintf(stderr, "arguments_cnt : %d\n", arguments_cnt);
-
-              arguments = (char**) malloc((arguments_cnt + 1) * sizeof(char *)); 
-              arguments[0] = exe_name;
-              for (int k = 1; k < arguments_cnt; k++) {
-                arguments[k] = tokens_get_token(tokens, j + 1);
-              }
-              arguments[arguments_cnt] = NULL;
-
-
-
-              break;
-            } else {
-              if (strcmp(current, "|") == 0) {
-                cnt++;
-              }  
-            }
-          }
-
+          find_execv_arguments(tokens, &exe_name, &arguments, i);
           execvp(exe_name, arguments);
-/*
-          for (int l = 0; arguments[l] != NULL; l++) {
-            fprintf(stderr, "%s  ", arguments[l]);
-          }
-          fprintf(stderr, "\n");
-          */
-
-
-          close(STDIN_FILENO);
-          exit(0);
         } else {
 
         }
-
       }
     }
-
-    close_pipes_array(pipe_array, num_pipes);
-    int terminated_pid;
-    while((terminated_pid = waitpid(-1, NULL, 0)) > 0) {
-      //printf("terminated_pid : %d\n", terminated_pid); 
-    }
-    //printf("all child process exit\n");
+      close_pipes_array(pipe_array, num_pipes);
+      int terminated_pid;
+      while((terminated_pid = waitpid(-1, NULL, 0)) > 0) {
+        //printf("terminated_pid : %d\n", terminated_pid); 
+      }
+      //printf("all child process exit\n");
   } else {
     pid_t pid = fork();
     if (pid == 0) {
