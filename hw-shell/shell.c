@@ -201,12 +201,19 @@ void exec_programs_helper(char* program_to_run, char** arguments) {
           free(arguments[0]);
           arguments[0] = (char*) malloc(strlen(absolute_path) + 1);
           strcpy(arguments[0], absolute_path);
-          //printf("%s\n", arguments[0]);
+
+          //printf("argumenst[0] : %s\n", arguments[0]);
+          /*
+          for(int i = 0; arguments[i] != NULL; i++) {
+            printf("%s\n", arguments[i]);
+          }
+          */
           execv(arguments[0], arguments);
+          //printf("<>\n");
         }
       }
 
-      fprintf(stdout, "failed to execute %s\n", copy_program_to_run);
+      fprintf(stderr, "failed to execute %s\n", copy_program_to_run);
       exit(-1);
 }
 
@@ -252,7 +259,6 @@ void find_execv_arguments(struct tokens* tokens, char** exe_name, char*** argume
                 current = tokens_get_token(tokens, index);
               }
               
-              */
               //fprintf(stderr, "1 : %s   2 : %s\n", tokens_get_token(tokens, j), tokens_get_token(tokens, j + 1));
               //fprintf(stderr, "arguments_cnt : %d\n", arguments_cnt);
 
@@ -284,8 +290,14 @@ void dup2_wrapper(int src, int dest) {
   }
 }
 
+void hello(int signum) {
+  printf("receive, hello\n");
+}
+
 int exec_programs(struct tokens* tokens) {
   assert(tokens_get_length(tokens) > 0);
+  // print tokens
+  //tokens_print(tokens);
 
   // redirection stdin or stdout
   bool redirect_output = false;
@@ -330,6 +342,12 @@ int exec_programs(struct tokens* tokens) {
   } else {
     pid_t pid = fork();
     if (pid == 0) {
+
+      // set to its own process group
+      setpgrp();
+
+      signal(SIGTSTP, hello);
+
       //redirect
       if (file_name != NULL) {
           redirect(file_name, redirect_output); 
@@ -340,7 +358,11 @@ int exec_programs(struct tokens* tokens) {
       char* program_to_run = tokens_get_token(tokens, 0);
       exec_programs_helper(program_to_run, tokens->tokens);
     } else {
+      //tcsetpgrp(shell_terminal, pid);
+      setpgid(pid, pid);
+      tcsetpgrp(shell_terminal, pid);
       wait(&pid);
+      tcsetpgrp(shell_terminal, getpgrp());
     }
   }
   return 0;
@@ -390,6 +412,9 @@ int main(unused int argc, unused char* argv[]) {
   if (shell_is_interactive)
     fprintf(stdout, "%d: ", line_num);
 
+  // ignore stop signal
+  signal(SIGTSTP, SIG_IGN);
+  signal(SIGTTOU, SIG_IGN);
 
   while (fgets(line, 4096, stdin)) {
     /* Split our line into words. */
