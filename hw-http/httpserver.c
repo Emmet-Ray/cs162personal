@@ -2,6 +2,7 @@
 #include <dirent.h>
 #include <errno.h>
 #include <fcntl.h>
+#include <libgen.h>
 #include <netdb.h>
 #include <netinet/in.h>
 #include <pthread.h>
@@ -31,6 +32,33 @@ char* server_files_directory;
 char* server_proxy_hostname;
 int server_proxy_port;
 
+
+void http_write_file_content(int fd, char* path) {
+  // get file size
+  struct stat file_info;
+  stat(path, &file_info);
+  int file_size = file_info.st_size;
+  // read the contents with [read], write to the client fd with [write]
+  int file_fd = open(path, O_RDONLY);
+  if (file_fd < 0) {
+    fprintf(stderr, "open file '%s' failed\n", path);
+    return;
+  }
+  char buffer[1024];
+  int read_bytes = 0;
+  int read_return;
+  while (read_bytes < file_size) {
+    read_return = read(file_fd, buffer, sizeof(buffer)); 
+    if (read_return < 0) {
+      fprintf(stderr, "failed when read '%s'\n", path);
+      return;
+    }
+    write(fd, buffer, read_return);
+    read_bytes += read_return;
+  }
+  close(file_fd);
+}
+
 /*
  * Serves the contents the file stored at `path` to the client socket `fd`.
  * It is the caller's reponsibility to ensure that the file stored at `path` exists.
@@ -52,26 +80,28 @@ void serve_file(int fd, char* path) {
   http_send_header(fd, "Content-Length", file_size_char); // TODO: change this line too
   http_end_headers(fd);
 
-  // read the contents with [read], write to the client fd with [write]
-  int file_fd = open(path, O_RDONLY);
-  if (file_fd < 0) {
-    fprintf(stderr, "open file '%s' failed\n", path);
-    return;
-  }
-  char buffer[1024];
-  int read_bytes = 0;
-  int read_return;
-  while (read_bytes < file_size) {
-    read_return = read(file_fd, buffer, sizeof(buffer)); 
-    if (read_return < 0) {
-      fprintf(stderr, "failed when read '%s'\n", path);
-      return;
-    }
-    write(fd, buffer, read_return);
-    read_bytes += read_return;
-  }
-  close(file_fd);
+  http_write_file_content(fd, path);  
   /* PART 2 END */
+}
+
+int serve_directory_find_write_index(int fd, char* path) {
+  DIR* dir = opendir(path);
+  if (dir == NULL) {
+    fprintf(stderr, "open dir '%s' failed\n", path);
+  }
+  struct dirent* entry;
+  // first pass : try to find the index.html
+  while ((entry = readdir(dir)) != NULL) {
+    // for debug
+    if (strcmp("index.html", entry->d_name) == 0) {
+      char buffer[1024];
+      http_format_index(buffer, path);
+      http_write_file_content(fd, buffer);
+      closedir(dir);
+      return 1; 
+    }
+  }
+  return 0;
 }
 
 void serve_directory(int fd, char* path) {
@@ -83,13 +113,37 @@ void serve_directory(int fd, char* path) {
   /* PART 3 BEGIN */
 
   // TODO: Open the directory (Hint: opendir() may be useful here)
-
   /**
    * TODO: For each entry in the directory (Hint: look at the usage of readdir() ),
    * send a string containing a properly formatted HTML. (Hint: the http_format_href()
    * function in libhttp.c may be useful here)
    */
 
+  int find = serve_directory_find_write_index(fd, path);
+  if (find) {
+    return;
+  }
+  // return list of the directory's children
+  DIR* dir = opendir(path);
+  struct dirent* entry;
+  char buffer[1024];
+  while ((entry = readdir(dir)) != NULL) {
+    if (strcmp(entry->d_name, ".") == 0) {
+      continue;
+    } else if (strcmp(entry->d_name, "..") == 0) {
+      char* parent_dir = (char*)malloc(strlen(path));
+      parent_dir = dirname(parent_dir);
+
+      int length = strlen("<a href=\"/\"></a>home<br/>") + strlen(parent_dir) + 1;
+      snprintf(buffer, length, "<a href=\"/%s\">home</a><br/>", parent_dir);
+
+      http_send_string(fd, buffer);
+    } else {
+      http_format_href(buffer, path, entry->d_name); 
+      http_send_string(fd, buffer);
+    }
+  }
+  closedir(dir);
   /* PART 3 END */
 }
 
@@ -143,12 +197,11 @@ void handle_files_request(int fd) {
    */
 
   /* PART 2 & 3 BEGIN */
-  printf("path : %s\n", path);
   // serve file :
   struct stat file_info;
   if ((stat(path, &file_info) == 0)) {
     if (S_ISDIR(file_info.st_mode)) {
-
+      serve_directory(fd, path);
     } else {
       serve_file(fd, path);
     }

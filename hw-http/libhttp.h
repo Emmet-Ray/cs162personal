@@ -38,6 +38,7 @@ void http_send_header(int fd, char* key, char* value);
 void http_end_headers(int fd);
 void http_format_href(char* buffer, char* path, char* filename);
 void http_format_index(char* buffer, char* path);
+void http_send_string(int fd, char* string); 
 
 /*
  * Helper function: gets the Content-Type based on a file name.

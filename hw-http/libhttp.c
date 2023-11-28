@@ -153,3 +153,15 @@ void http_format_index(char* buffer, char* path) {
   int length = strlen(path) + strlen("/index.html") + 1;
   snprintf(buffer, length, "%s/index.html", path);
 }
+
+
+void http_send_string(int fd, char* string) {
+  int write_bytes = 0;
+  int len = strlen(string);
+  while (write_bytes < len) {
+    write_bytes += write(fd, string, len);
+  }
+  char new_line[] = "\r\n";
+  write(fd, new_line, sizeof(new_line));
+}
+
