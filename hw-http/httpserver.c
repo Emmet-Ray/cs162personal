@@ -40,11 +40,37 @@ void serve_file(int fd, char* path) {
   /* TODO: PART 2 */
   /* PART 2 BEGIN */
 
+  // get file size, convert to char* type
+  struct stat file_info;
+  stat(path, &file_info);
+  char file_size_char[10];
+  int file_size = file_info.st_size;
+  snprintf(file_size_char, sizeof(file_size_char), "%d", file_size);
+
   http_start_response(fd, 200);
   http_send_header(fd, "Content-Type", http_get_mime_type(path));
-  http_send_header(fd, "Content-Length", "0"); // TODO: change this line too
+  http_send_header(fd, "Content-Length", file_size_char); // TODO: change this line too
   http_end_headers(fd);
 
+  // read the contents with [read], write to the client fd with [write]
+  int file_fd = open(path, O_RDONLY);
+  if (file_fd < 0) {
+    fprintf(stderr, "open file '%s' failed\n", path);
+    return;
+  }
+  char buffer[1024];
+  int read_bytes = 0;
+  int read_return;
+  while (read_bytes < file_size) {
+    read_return = read(file_fd, buffer, sizeof(buffer)); 
+    if (read_return < 0) {
+      fprintf(stderr, "failed when read '%s'\n", path);
+      return;
+    }
+    write(fd, buffer, read_return);
+    read_bytes += read_return;
+  }
+  close(file_fd);
   /* PART 2 END */
 }
 
@@ -117,7 +143,20 @@ void handle_files_request(int fd) {
    */
 
   /* PART 2 & 3 BEGIN */
+  printf("path : %s\n", path);
+  // serve file :
+  struct stat file_info;
+  if ((stat(path, &file_info) == 0)) {
+    if (S_ISDIR(file_info.st_mode)) {
 
+    } else {
+      serve_file(fd, path);
+    }
+  } else {
+    // not found
+    http_start_response(fd, 404);
+    http_end_headers(fd);
+  }
   /* PART 2 & 3 END */
 
   close(fd);
