@@ -404,7 +404,11 @@ void serve_forever(int* socket_number, void (*request_handler)(int)) {
      */
 
     /* PART 5 BEGIN */
-
+    pid_t pid = fork();
+    if (pid == 0) {
+      request_handler(client_socket_number);
+      exit(0);
+    }
     /* PART 5 END */
 
 #elif THREADSERVER
