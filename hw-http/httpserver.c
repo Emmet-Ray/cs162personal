@@ -298,7 +298,11 @@ void* handle_clients(void* void_request_handler) {
 
   /* TODO: PART 7 */
   /* PART 7 BEGIN */
-
+  while (1) {
+    int fd = wq_pop(&work_queue);
+    //printf("I got a fd!\n");
+    request_handler(fd);
+  }
   /* PART 7 END */
 }
 
@@ -309,7 +313,12 @@ void init_thread_pool(int num_threads, void (*request_handler)(int)) {
 
   /* TODO: PART 7 */
   /* PART 7 BEGIN */
-
+  wq_init(&work_queue);
+  work_queue.num_workers = num_threads;
+  work_queue.workers = (pthread_t*) malloc(num_threads * sizeof(pthread_t));
+  for(int i = 0; i < num_threads; i++) {
+    pthread_create(work_queue.workers + i, NULL, handle_clients, request_handler);
+  }
   /* PART 7 END */
 }
 #endif
@@ -323,7 +332,7 @@ struct respond_info {
 };
 
 void* thread_respond(void* respond_info) {
-  printf("**** a thread is created ******\n");
+  //printf("**** a thread is created ******\n");
   struct respond_info info = *(struct respond_info*)respond_info; 
   info.request_handler(info.fd); 
   pthread_exit(NULL);
@@ -456,11 +465,15 @@ void serve_forever(int* socket_number, void (*request_handler)(int)) {
      */
 
     /* PART 7 BEGIN */
-
+    wq_push(&work_queue, client_socket_number);
+    //printf("main thread push a fd\n");
     /* PART 7 END */
 #endif
   }
 
+#if POOLSERVER
+  free(work_queue.workers);
+#endif
   shutdown(*socket_number, SHUT_RDWR);
   close(*socket_number);
 }

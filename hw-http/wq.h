@@ -18,6 +18,8 @@ typedef struct wq {
   pthread_mutex_t mutex;
   pthread_cond_t condvar;
   /* TODO: More stuff here, maybe? */
+  int num_workers;
+  pthread_t* workers;
 } wq_t;
 
 void wq_init(wq_t* wq);
