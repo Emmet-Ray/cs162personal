@@ -393,6 +393,9 @@ void serve_forever(int* socket_number, void (*request_handler)(int)) {
   init_thread_pool(num_threads, request_handler);
 #endif
 
+  // for thread_server
+  pthread_t thread;
+  struct respond_info info;
   while (1) {
     client_socket_number = accept(*socket_number, (struct sockaddr*)&client_address,
                                   (socklen_t*)&client_address_length);
@@ -431,6 +434,7 @@ void serve_forever(int* socket_number, void (*request_handler)(int)) {
     pid_t pid = fork();
     if (pid == 0) {
       request_handler(client_socket_number);
+      printf("child completed the response\n");
       exit(0);
     }
     /* PART 5 END */
@@ -447,8 +451,6 @@ void serve_forever(int* socket_number, void (*request_handler)(int)) {
      */
 
     /* PART 6 BEGIN */
-    pthread_t thread;
-    struct respond_info info;
     info.fd = client_socket_number;
     info.request_handler = request_handler;
     if (pthread_create(&thread, NULL, thread_respond, (void*)&info)) {
