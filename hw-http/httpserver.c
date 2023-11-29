@@ -314,14 +314,17 @@ void init_thread_pool(int num_threads, void (*request_handler)(int)) {
 }
 #endif
 
+/*
+  used as a wrapper to pass arguments to [thread_respond] function
+*/
 struct respond_info {
   void (*request_handler)(int);
   int fd;
 };
 
-void* thread_respond(void* res_info) {
+void* thread_respond(void* respond_info) {
   printf("**** a thread is created ******\n");
-  struct respond_info info = *(struct respond_info*)res_info; 
+  struct respond_info info = *(struct respond_info*)respond_info; 
   info.request_handler(info.fd); 
   pthread_exit(NULL);
 }
