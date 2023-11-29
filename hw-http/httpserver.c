@@ -314,6 +314,18 @@ void init_thread_pool(int num_threads, void (*request_handler)(int)) {
 }
 #endif
 
+struct respond_info {
+  void (*request_handler)(int);
+  int fd;
+};
+
+void* thread_respond(void* res_info) {
+  printf("**** a thread is created ******\n");
+  struct respond_info info = *(struct respond_info*)res_info; 
+  info.request_handler(info.fd); 
+  pthread_exit(NULL);
+}
+
 /*
  * Opens a TCP stream socket on all interfaces with port number PORTNO. Saves
  * the fd number of the server socket in *socket_number. For each accepted
@@ -423,7 +435,13 @@ void serve_forever(int* socket_number, void (*request_handler)(int)) {
      */
 
     /* PART 6 BEGIN */
-
+    pthread_t thread;
+    struct respond_info info;
+    info.fd = client_socket_number;
+    info.request_handler = request_handler;
+    if (pthread_create(&thread, NULL, thread_respond, (void*)&info)) {
+      fprintf(stderr, "pthread_create failed\n");
+    }
     /* PART 6 END */
 #elif POOLSERVER
     /*
