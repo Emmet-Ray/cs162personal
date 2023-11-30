@@ -31,7 +31,7 @@ int server_port; // Default value: 8000
 char* server_files_directory;
 char* server_proxy_hostname;
 int server_proxy_port;
-
+int is_socket_closed; 
 
 void http_write_file_content(int fd, char* path) {
   // get file size
@@ -216,6 +216,55 @@ void handle_files_request(int fd) {
   return;
 }
 
+/* client --> handler --> target
+ * argv should be a pointer to an array.
+ * *argv[0] is client fd
+ * *argv[1] is target fd
+ */
+void *ctot_handler(void *argv) {
+  int *fd = argv;
+  int client_fd = fd[0];
+  int target_fd = fd[1];
+  char buff[1024];
+  ssize_t recv_size;
+
+  while (is_socket_closed == 0)
+  {
+    recv_size = recv(client_fd, buff, 1024, 0);
+    if (recv_size > 0)
+    {
+      write_complete(target_fd, buff, recv_size);
+    } else
+    {
+      is_socket_closed = 1;
+    }  
+  }
+  is_socket_closed = 1;
+  pthread_exit(0);
+}
+
+/* target --> handler --> client */
+void *ttoc_handler(void *argv) {
+  int *fd = argv;
+  int client_fd = fd[0];
+  int target_fd = fd[1];
+  char buff[1024];
+  ssize_t recv_size;
+
+  while (is_socket_closed == 0)
+  {
+    recv_size = recv(target_fd, buff, 1024, 0);
+    if (recv_size > 0)
+    {
+      write_complete(client_fd, buff, recv_size);
+    } else
+    {
+      is_socket_closed = 1;
+    } 
+  }
+  is_socket_closed = 1;
+  pthread_exit(0);
+}
 
 /*
  * Opens a connection to the proxy target (hostname=server_proxy_hostname and
@@ -280,6 +329,28 @@ void handle_proxy_request(int fd) {
 
   /* TODO: PART 4 */
   /* PART 4 BEGIN */
+
+  pthread_t thread_ctot;
+  pthread_t thread_ttoc;
+  int *argv;
+
+  is_socket_closed = 0;
+  argv =(int*) malloc(2 * sizeof(int));
+  argv[0] = fd;
+  argv[1] = target_fd;
+
+  if (pthread_create(&thread_ctot, NULL, &ctot_handler, (void *)argv) != 0 || 
+      pthread_create(&thread_ttoc, NULL, &ttoc_handler, (void *)argv) != 0)
+  {
+    fprintf(stderr, "failed to create threads.\n");
+    return;
+  }
+
+  pthread_join(thread_ctot, NULL);
+  pthread_join(thread_ttoc, NULL);
+
+  close(target_fd);
+  close(fd);
   
   /* PART 4 END */
 }
