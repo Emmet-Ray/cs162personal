@@ -216,6 +216,7 @@ void handle_files_request(int fd) {
   return;
 }
 
+
 /*
  * Opens a connection to the proxy target (hostname=server_proxy_hostname and
  * port=server_proxy_port) and relays traffic to/from the stream fd and the
@@ -279,7 +280,7 @@ void handle_proxy_request(int fd) {
 
   /* TODO: PART 4 */
   /* PART 4 BEGIN */
-
+  
   /* PART 4 END */
 }
 
