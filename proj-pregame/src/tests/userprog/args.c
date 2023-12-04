@@ -6,7 +6,7 @@
 #include "tests/lib.h"
 #include <stdio.h>
 int main(int argc, char* argv[]) {
-  hex_dump(0, 0xbfffffe0, 32, true);
+  // hex_dump(0, 0xbfffffe0, 32, true);
   int i;
 
   test_name = "args";
