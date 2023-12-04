@@ -6,6 +6,7 @@
 #include "tests/lib.h"
 #include "tests/main.h"
 #include <stdint.h>
+#include <stdio.h>
 
 void NO_INLINE check_pointer_alignment(void* candidate);
 void NO_INLINE check_stack_alignment(void);
@@ -29,6 +30,7 @@ void NO_INLINE check_stack_alignment(void) {
 }
 
 int main(int argc UNUSED, char* argv[] UNUSED) {
+  //hex_dump(0xbfffffb0, 0xbfffffb0, 0x50, true);
   test_name = "stack-align";
   msg("begin");
   check_stack_alignment();

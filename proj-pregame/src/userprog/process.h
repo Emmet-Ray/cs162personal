@@ -27,6 +27,9 @@ struct process {
   uint32_t* pagedir;          /* Page directory. */
   char process_name[16];      /* Name of the main thread */
   struct thread* main_thread; /* Pointer to main thread */
+  uint32_t file_name_len;     // the len of the input file_name(untokenized), used for setup_stack
+  uint32_t argc;
+  char** argv;
 };
 
 void userprog_init(void);

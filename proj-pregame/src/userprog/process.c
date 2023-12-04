@@ -51,7 +51,7 @@ void userprog_init(void) {
    before process_execute() returns.  Returns the new process's
    process id, or TID_ERROR if the thread cannot be created. */
 pid_t process_execute(const char* file_name) {
-  printf("file name : %s\n", file_name);
+  //printf("file name : %s\n", file_name);
   char* fn_copy;
   tid_t tid;
 
@@ -91,8 +91,34 @@ static void start_process(void* file_name_) {
 
     // Continue initializing the PCB as normal
     t->pcb->main_thread = t;
-    strlcpy(t->pcb->process_name, t->name, sizeof t->name);
+
+    //TODO: here,for one/many args, we need to cut it to one by one. Otherwise, 'open failed' would happen
+    //     store somewhere? process struct member <args> <argv>
+    uint32_t argc = 1; // at least with file name
+    for(char* p = file_name; *p != '\0'; p++) {
+      if (*p == ' ') {
+        argc++;
+        while(*p == ' ') {
+          p++;
+        }
+      }
+    }
+    t->pcb->argc = argc;
+    t->pcb->file_name_len = strlen(file_name) + 1;
+    t->pcb->argv = (char**)malloc(sizeof(char*) * (argc + 1));
+    char* token, *save_ptr;
+    uint32_t i = 0;
+    for (token = strtok_r(file_name, " ", &save_ptr); token != NULL;
+         token = strtok_r(NULL, " ", &save_ptr), i++) {
+            t->pcb->argv[i] = (char*)malloc(strlen(token) + 1);
+            strlcpy(t->pcb->argv[i], token, strlen(token) + 1);
+            //printf("argv[%d] : %s\n", t->pcb->argv[i], i);
+         }
+    t->pcb->argv[i] = NULL;
+    strlcpy(t->pcb->process_name, t->pcb->argv[0], strlen(t->pcb->argv[0]) + 1);
   }
+
+
 
   /* Initialize interrupt frame and load executable. */
   if (success) {
@@ -283,11 +309,9 @@ bool load(const char* file_name, void (**eip)(void), void** esp) {
     goto done;
   process_activate();
 
-  //TODO: here,for one/many args, we need to cut it to one by one. Otherwise, 'open failed' would happen
-  //     store somewhere? process struct member <args> <argv>
 
   /* Open executable file. */
-  //printf("<>file_name : %s\n", file_name);
+  //printf("<>to be opened file_name : %s\n", file_name);
   file = filesys_open(file_name);
   if (file == NULL) {
     printf("load: %s: open failed\n", file_name);
@@ -481,20 +505,27 @@ static bool setup_stack(void** esp) {
     success = install_page(((uint8_t*)PHYS_BASE) - PGSIZE, kpage, true);
     if (success) {
       // prepare the args for <_start> function, see Pintos docs [Program start up details]
+      struct thread* t = thread_current();
       uint8_t* physical_mem_p = (void*)kpage + PGSIZE;
       uint32_t* physical_mem_p_32;
-      int offset = kpage + PGSIZE - physical_mem_p;
-      *(--physical_mem_p) = '\0';
-      physical_mem_p -= strlen(thread_name()); 
-      memcpy((void*)physical_mem_p, thread_name(), strlen(thread_name())); 
+      uint32_t offset = kpage + PGSIZE - physical_mem_p;
+      //*(--physical_mem_p) = '\0';
 
-      offset = kpage + PGSIZE - physical_mem_p;
-      uint8_t* argv_0_address = PHYS_BASE - offset;
+      uint32_t argv_i_address[t->pcb->argc];
+      int cur_len = 0;
+      for (int i = t->pcb->argc - 1; i > -1; i--) {
+        cur_len = strlen(t->pcb->argv[i]) + 1;
+        physical_mem_p -= cur_len; 
+        memcpy((void*)physical_mem_p, t->pcb->argv[i], strlen(t->pcb->argv[i]) + 1); 
+        offset = kpage + PGSIZE - physical_mem_p;
+        argv_i_address[i] = PHYS_BASE - offset;
+      }
+
+      //uint8_t* argv_0_address = PHYS_BASE - offset;
       //printf("argv_0_address : %p\n", argv_0_address);
 
       // stack-align 
-      int argc = 1;
-      int len = (argc + 1) * 4 + 2 * 4 + strlen(thread_name()) + 1;
+      int len = (t->pcb->argc + 1) * 4 + 2 * 4 + t->pcb->file_name_len;
       int stack_align = 16 - (len % 16);
       physical_mem_p -= stack_align;
       //printf("stack-align : %d\n", stack_align);
@@ -503,14 +534,16 @@ static bool setup_stack(void** esp) {
 
       // argv[i]
       *(--physical_mem_p_32) = (uint32_t)0;
-      *(--physical_mem_p_32) = (uint32_t)argv_0_address;
+      for (int i = t->pcb->argc - 1; i > -1; i--) {
+        *(--physical_mem_p_32) = argv_i_address[i];
+      }
       //printf("%p\n", *physical_mem_p_32);
 
       offset = kpage + PGSIZE - (uint8_t*)physical_mem_p_32;
       uint8_t* argv_address = PHYS_BASE - offset;
       // argv & argc
       *(--physical_mem_p_32) = (uint32_t)argv_address;
-      *(--physical_mem_p_32) = (uint32_t)1;
+      *(--physical_mem_p_32) = (uint32_t)t->pcb->argc;
       // fake return address
       physical_mem_p_32--; 
 
