@@ -51,7 +51,7 @@ void userprog_init(void) {
    before process_execute() returns.  Returns the new process's
    process id, or TID_ERROR if the thread cannot be created. */
 pid_t process_execute(const char* file_name) {
-  //printf("file name : %s\n", file_name);
+  printf("file name : %s\n", file_name);
   char* fn_copy;
   tid_t tid;
 
@@ -283,6 +283,9 @@ bool load(const char* file_name, void (**eip)(void), void** esp) {
     goto done;
   process_activate();
 
+  //TODO: here,for one/many args, we need to cut it to one by one. Otherwise, 'open failed' would happen
+  //     store somewhere? process struct member <args> <argv>
+
   /* Open executable file. */
   //printf("<>file_name : %s\n", file_name);
   file = filesys_open(file_name);
@@ -476,8 +479,45 @@ static bool setup_stack(void** esp) {
   kpage = palloc_get_page(PAL_USER | PAL_ZERO);
   if (kpage != NULL) {
     success = install_page(((uint8_t*)PHYS_BASE) - PGSIZE, kpage, true);
-    if (success)
-      *esp = PHYS_BASE- 20; // the offset is variable : 1. number of args, 2. stack-aligned
+    if (success) {
+      // prepare the args for <_start> function, see Pintos docs [Program start up details]
+      uint8_t* physical_mem_p = (void*)kpage + PGSIZE;
+      uint32_t* physical_mem_p_32;
+      int offset = kpage + PGSIZE - physical_mem_p;
+      *(--physical_mem_p) = '\0';
+      physical_mem_p -= strlen(thread_name()); 
+      memcpy((void*)physical_mem_p, thread_name(), strlen(thread_name())); 
+
+      offset = kpage + PGSIZE - physical_mem_p;
+      uint8_t* argv_0_address = PHYS_BASE - offset;
+      //printf("argv_0_address : %p\n", argv_0_address);
+
+      // stack-align 
+      int argc = 1;
+      int len = (argc + 1) * 4 + 2 * 4 + strlen(thread_name()) + 1;
+      int stack_align = 16 - (len % 16);
+      physical_mem_p -= stack_align;
+      //printf("stack-align : %d\n", stack_align);
+
+      physical_mem_p_32 = physical_mem_p;
+
+      // argv[i]
+      *(--physical_mem_p_32) = (uint32_t)0;
+      *(--physical_mem_p_32) = (uint32_t)argv_0_address;
+      //printf("%p\n", *physical_mem_p_32);
+
+      offset = kpage + PGSIZE - (uint8_t*)physical_mem_p_32;
+      uint8_t* argv_address = PHYS_BASE - offset;
+      // argv & argc
+      *(--physical_mem_p_32) = (uint32_t)argv_address;
+      *(--physical_mem_p_32) = (uint32_t)1;
+      // fake return address
+      physical_mem_p_32--; 
+
+      offset = kpage + PGSIZE - (uint8_t*)physical_mem_p_32;
+      *esp = PHYS_BASE - offset; //20; // the offset is variable : 1. number of args, 2. stack-aligned
+      //printf("%p\n", *esp);
+    }
     else
       palloc_free_page(kpage);
   }

@@ -21,9 +21,6 @@ static void syscall_handler(struct intr_frame* f UNUSED) {
    */
 
   /* printf("System call number: %d\n", args[0]); */
-  if (args[0] == SYS_PRACTICE) {
-    printf("<1>\n");
-  }
 
   if (args[0] == SYS_EXIT) {
     f->eax = args[1];
@@ -45,7 +42,7 @@ static void syscall_handler(struct intr_frame* f UNUSED) {
     int result = syscall_write(fd, buffer, size);
     f->eax = result;
   } else if (args[0] == SYS_PRACTICE) {
-    printf("<1>\n");
+    //printf("<1>\n");
     int integer = args[1];
     f->eax = practice(integer);
   }
