@@ -1,14 +1,23 @@
-#include "userprog/syscall.h"
 #include <stdio.h>
 #include <syscall-nr.h>
 #include <console.h>
 #include "threads/interrupt.h"
 #include "threads/thread.h"
+#include "threads/vaddr.h"
+#include "userprog/syscall.h"
 #include "userprog/process.h"
+#include "userprog/pagedir.h"
+#include "devices/shutdown.h"
+#include "lib/syscall-nr.h"
+
 
 static void syscall_handler(struct intr_frame*);
-
+bool invalid_vaddr(void* addr) {
+  return !addr || !is_user_vaddr(addr) || !pagedir_get_page(thread_current()->pcb->pagedir, addr);
+}
 void syscall_init(void) { intr_register_int(0x30, 3, INTR_ON, syscall_handler, "syscall"); }
+
+
 
 static void syscall_handler(struct intr_frame* f UNUSED) {
   uint32_t* args = ((uint32_t*)f->esp);
@@ -45,6 +54,20 @@ static void syscall_handler(struct intr_frame* f UNUSED) {
     //printf("<1>\n");
     int integer = args[1];
     f->eax = practice(integer);
+  } else if (args[0] == SYS_HALT) {
+    halt();
+  } else if (args[0] == SYS_EXEC) {
+    // NULL || not user_vaddr || unmapped || 
+    if (invalid_vaddr((void*)args[1])) {
+      printf("%s: exit(%d)\n", thread_current()->pcb->process_name, -1);
+      process_exit();
+    }
+    char* cmd_line = (char*)args[1];
+    printf("user_buffer: %p\n", cmd_line);
+    printf("user_file_name: %s\n", cmd_line);
+    f->eax = exec(cmd_line);
+  } else if (args[0] == SYS_WAIT) {
+    f->eax = wait(args[1]);
   }
 }
 
@@ -57,6 +80,22 @@ int syscall_write(int fd, const void *buffer, unsigned size) {
     
     return result;
 }
+
 int practice(int i) {
   return i + 1;
+}
+
+void halt(void) {
+  shutdown_power_off();
+}
+
+pid_t exec(const char* cmd_line) {
+  //int pid = process_execute(cmd_line);
+  return 0;
+}
+
+int wait(pid_t pid) {
+  //int result = process_wait(pid);
+  //return result;
+  return 0;
 }
