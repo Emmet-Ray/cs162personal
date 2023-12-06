@@ -21,7 +21,7 @@
 #include "threads/vaddr.h"
 
 static struct semaphore temporary;
-static thread_func start_process NO_RETURN;
+//static thread_func start_process NO_RETURN;
 static thread_func start_pthread NO_RETURN;
 static bool load(const char* file_name, void (**eip)(void), void** esp);
 bool setup_thread(void (**eip)(void), void** esp);
@@ -52,28 +52,33 @@ void userprog_init(void) {
    process id, or TID_ERROR if the thread cannot be created. */
 pid_t process_execute(const char* file_name) {
   //printf("file name : %s\n", file_name);
-  char* fn_copy;
+  struct start_process_args* args = malloc(sizeof(struct start_process_args));
+  args->exec_syscall = false;
+  //char* fn_copy = args->file_name;
   tid_t tid;
-
   sema_init(&temporary, 0);
   /* Make a copy of FILE_NAME.
      Otherwise there's a race between the caller and load(). */
-  fn_copy = palloc_get_page(0);
-  if (fn_copy == NULL)
+  args->file_name = palloc_get_page(0);
+  if (args->file_name == NULL)
     return TID_ERROR;
-  strlcpy(fn_copy, file_name, PGSIZE);
+  strlcpy(args->file_name, file_name, PGSIZE);
 
   /* Create a new thread to execute FILE_NAME. */
-  tid = thread_create(file_name, PRI_DEFAULT, start_process, fn_copy);
-  if (tid == TID_ERROR)
-    palloc_free_page(fn_copy);
+  tid = thread_create(file_name, PRI_DEFAULT, start_process, args);
+  if (tid == TID_ERROR) {
+    palloc_free_page(args->file_name);
+    free(args);
+  }
   return tid;
 }
 
 /* A thread function that loads a user process and starts it
    running. */
-static void start_process(void* file_name_) {
-  char* file_name = (char*)file_name_;
+//static void start_process(void* argument) {
+void start_process(void* argument) {
+  struct start_process_args* arg = (struct start_process_args*)argument;
+  char* file_name = (char*)arg->file_name;
   struct thread* t = thread_current();
   struct intr_frame if_;
   bool success, pcb_success;
@@ -116,6 +121,7 @@ static void start_process(void* file_name_) {
          }
     t->pcb->argv[i] = NULL;
     strlcpy(t->pcb->process_name, t->pcb->argv[0], strlen(t->pcb->argv[0]) + 1);
+    strlcpy(t->name, t->pcb->argv[0], strlen(t->pcb->argv[0]) + 1);
   }
 
 
@@ -127,6 +133,11 @@ static void start_process(void* file_name_) {
     if_.cs = SEL_UCSEG;
     if_.eflags = FLAG_IF | FLAG_MBS;
     success = load(file_name, &if_.eip, &if_.esp);
+    
+    if (arg->exec_syscall) {
+      arg->load_success = success ? true : false;
+      sema_up(&arg->load_sema);
+    }
   }
 
   /* Handle failure with succesful PCB malloc. Must free the PCB */
@@ -145,6 +156,7 @@ static void start_process(void* file_name_) {
     sema_up(&temporary);
     thread_exit();
   }
+
 
   /* Start the user process by simulating a return from an
      interrupt, implemented by intr_exit (in

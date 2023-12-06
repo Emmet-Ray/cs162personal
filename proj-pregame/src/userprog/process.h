@@ -32,12 +32,21 @@ struct process {
   char** argv;
 };
 
+// argument for function [start_process] in process.c
+struct start_process_args {
+   char* file_name;
+   bool exec_syscall;
+   struct semaphore load_sema; // synchronization for load
+   bool load_success;          // load result
+};
+
 void userprog_init(void);
 
 pid_t process_execute(const char* file_name);
 int process_wait(pid_t);
 void process_exit(void);
 void process_activate(void);
+void start_process(void* argument); 
 
 bool is_main_thread(struct thread*, struct process*);
 pid_t get_pid(struct process*);
