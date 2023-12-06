@@ -20,11 +20,13 @@ bool invalid_vaddr(void* addr) {
 bool invalid_string(void* string_) {
   char* string = (char*) string_;
   while (!invalid_vaddr(string)) {
+    printf("%p\n", string);
     if (*string == '\0') {
       return false;
     }
     string++;
   }
+  printf("%p\n", string);
   return true;
 }
 extern void start_process(void* argument);
@@ -71,14 +73,10 @@ static void syscall_handler(struct intr_frame* f UNUSED) {
     halt();
   } else if (args[0] == SYS_EXEC) {
     // NULL || not user_vaddr || unmapped || ...
-    // byte by byte check
+    // byte by byte check, the buffer doesn't cross valid & invalid memory region
+    // && if not, check the address is valid
     uint8_t* args_b = args + 1;
-    //printf("args[1]: %p\n", (void*)args[1]);
     if (invalid_string((void*)args_b) || invalid_vaddr((void*)args[1])) {
-      printf("args_b: %p\n", args_b);
-      printf("args[1]: %p\n", (void*)args[1]);
-      printf("args+1: %p\n", (void*)(args+1));
-      printf("*(args+1): %p\n", *(void**)(args+1));
       printf("%s: exit(%d)\n", thread_current()->pcb->process_name, -1);
       process_exit();
     } 
