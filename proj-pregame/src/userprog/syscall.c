@@ -14,20 +14,31 @@
 
 
 static void syscall_handler(struct intr_frame*);
+// check an [addr] is valid or not, if invalid return true;
+// invalid type : NULL || not user_vaddr || unmapped || ...
 bool invalid_vaddr(void* addr) {
   return !addr || !is_user_vaddr(addr) || !pagedir_get_page(thread_current()->pcb->pagedir, addr);
 }
+// the string maybe cross the boundary
 bool invalid_string(void* string_) {
-  char* string = (char*) string_;
-  while (!invalid_vaddr(string)) {
-    printf("%p\n", string);
+  char* string = (char*)string_;
+  while (!invalid_vaddr((void*)string)) {
     if (*string == '\0') {
       return false;
     }
     string++;
   }
-  printf("%p\n", string);
   return true;
+}
+// the pointer maybe cross the page boundary
+bool invalid_string_pointer(void* string_p) {
+    void* up_bound = pg_round_up(string_p);
+    uint32_t cross = up_bound - string_p;
+    if (cross > 3) {
+      return invalid_vaddr(string_p);
+    } else {
+      return invalid_vaddr(string_p) || invalid_vaddr(up_bound);
+    }
 }
 extern void start_process(void* argument);
 void syscall_init(void) { intr_register_int(0x30, 3, INTR_ON, syscall_handler, "syscall"); }
@@ -66,23 +77,17 @@ static void syscall_handler(struct intr_frame* f UNUSED) {
     int result = syscall_write(fd, buffer, size);
     f->eax = result;
   } else if (args[0] == SYS_PRACTICE) {
-    //printf("<1>\n");
     int integer = args[1];
     f->eax = practice(integer);
   } else if (args[0] == SYS_HALT) {
     halt();
   } else if (args[0] == SYS_EXEC) {
-    // NULL || not user_vaddr || unmapped || ...
-    // byte by byte check, the buffer doesn't cross valid & invalid memory region
-    // && if not, check the address is valid
-    uint8_t* args_b = args + 1;
-    if (invalid_string((void*)args_b) || invalid_vaddr((void*)args[1])) {
+    // need to check : 1. the string pointer 2. the string address 3. the string (across boundary)
+    if (invalid_string_pointer((void*)(args + 1)) || invalid_vaddr((void*)args[1]) || invalid_string((void*)args[1])) {
       printf("%s: exit(%d)\n", thread_current()->pcb->process_name, -1);
       process_exit();
     } 
     char* cmd_line = (char*)args[1];
-    //printf("user_buffer: %p\n", cmd_line);
-    //printf("user_file_name: %s\n", cmd_line);
     f->eax = exec(cmd_line);
   } else if (args[0] == SYS_WAIT) {
     f->eax = wait(args[1]);
