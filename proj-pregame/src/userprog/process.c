@@ -96,6 +96,8 @@ static void start_process(void* file_name_) {
 
     // Continue initializing the PCB as normal
     t->pcb->main_thread = t;
+    t->pcb->current_wait_on = -1;
+    list_init(&t->pcb->children_list);
 
     //TODO: here,for one/many args, we need to cut it to one by one. Otherwise, 'open failed' would happen
     //     store somewhere? process struct member <args> <argv>
