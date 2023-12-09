@@ -46,6 +46,10 @@ void userprog_init(void) {
 
   /* Kill the kernel if we did not succeed */
   ASSERT(success);
+  // init [waiting_waited_list]
+  list_init(&waiting_waited_list);
+  // init [child_pid_list]
+  list_init(&t->pcb->child_pid_list);
 }
 
 /* Starts a new thread running a user program loaded from
@@ -58,7 +62,7 @@ pid_t process_execute(const char* file_name) {
   args->exec_syscall = false;
   //char* fn_copy = args->file_name;
   tid_t tid;
-  sema_init(&temporary, 0);
+  //sema_init(&temporary, 0);
   /* Make a copy of FILE_NAME.
      Otherwise there's a race between the caller and load(). */
   args->file_name = palloc_get_page(0);
@@ -72,6 +76,13 @@ pid_t process_execute(const char* file_name) {
     palloc_free_page(args->file_name);
     free(args);
   }
+  // update main process's [child_pid_list] && [waiting_waited_list]
+  struct child_pid* child_id = palloc_get_page();
+  child_id->pid = tid;
+  list_push_back(&waiting_waited_list, &child_id->elem);
+  struct waiting_waited* new_waiting_waited = palloc_get_page();
+  waiting_waited_init(new_waiting_waited, tid);
+  list_push_back(&waiting_waited_list, &new_waiting_waited->elem);
   return tid;
 }
 
@@ -155,7 +166,7 @@ void start_process(void* argument) {
   /* Clean up. Exit on failure or jump to userspace */
   palloc_free_page(file_name);
   if (!success) {
-    sema_up(&temporary);
+    //sema_up(&temporary);
     thread_exit();
   }
 
@@ -180,7 +191,7 @@ void start_process(void* argument) {
    This function will be implemented in problem 2-2.  For now, it
    does nothing. */
 int process_wait(pid_t child_pid UNUSED) {
-  sema_down(&temporary);
+  //sema_down(&temporary);
   return 0;
 }
 
@@ -219,7 +230,7 @@ void process_exit(void) {
   cur->pcb = NULL;
   free(pcb_to_free);
 
-  sema_up(&temporary);
+  //sema_up(&temporary);
   thread_exit();
 }
 
@@ -653,3 +664,14 @@ void pthread_exit(void) {}
    This function will be implemented in Project 2: Multithreading. For
    now, it does nothing. */
 void pthread_exit_main(void) {}
+
+
+// new added functions
+
+void waiting_waited_init(struct waiting_waited* elem, pid_t child_pid) {
+  elem->p_pid = thread_current()->pcb->main_thread->tid;
+  elem->c_pid = tid;
+  elem->over = false;
+  elem->exit_status = -1;
+  sema_init(&elem->over_sema);
+}

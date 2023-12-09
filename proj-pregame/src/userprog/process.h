@@ -44,7 +44,7 @@ struct start_process_args {
 struct child_pid {
    pid_t pid;
    struct list_elem elem;
-}
+};
 
 struct waiting_waited {
    pid_t p_pid; // parent pid
@@ -52,7 +52,8 @@ struct waiting_waited {
    struct semaphore over_sema;
    bool over;
    int exit_status;
-}
+   struct list_elem elem;
+};
 
 void userprog_init(void);
 
@@ -70,4 +71,6 @@ tid_t pthread_join(tid_t);
 void pthread_exit(void);
 void pthread_exit_main(void);
 
+// new added functions
+void waiting_waited_init(struct waiting_waited* elem, pid_t child_pid);
 #endif /* userprog/process.h */
