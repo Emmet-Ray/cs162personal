@@ -125,6 +125,7 @@ pid_t exec(const char* cmd_line) {
   pid_t pid = thread_create("", PRI_DEFAULT, start_process, &args);
   sema_down(&args.load_sema);
   if (args.load_success) {
+    add_to_child_pid_list(pid);
     return pid;
   } else {
     return -1;
@@ -132,7 +133,7 @@ pid_t exec(const char* cmd_line) {
 }
 
 int wait(pid_t pid) {
-  int result = process_wait(pid);
+  //int result = process_wait(pid);
   //return result;
   return 0;
 }
