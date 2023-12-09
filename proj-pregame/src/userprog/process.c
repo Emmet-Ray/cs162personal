@@ -20,6 +20,8 @@
 #include "threads/thread.h"
 #include "threads/vaddr.h"
 
+struct list wait_list;
+
 static struct semaphore temporary;
 static thread_func start_process NO_RETURN;
 static thread_func start_pthread NO_RETURN;
@@ -44,6 +46,9 @@ void userprog_init(void) {
 
   /* Kill the kernel if we did not succeed */
   ASSERT(success);
+  t->pcb->current_wait_on = -1;
+  list_init(&t->pcb->children_list);
+  list_init(&wait_list);
 }
 
 /* Starts a new thread running a user program loaded from

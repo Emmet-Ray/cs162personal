@@ -113,7 +113,8 @@ void halt(void) {
 }
 
 pid_t exec(const char* cmd_line) {
-  
+  //pid_t pid = process_execute(cmd_line);  
+  //return pid;
 }
 
 int wait(pid_t pid) {

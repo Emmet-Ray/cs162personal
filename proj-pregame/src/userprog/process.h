@@ -30,6 +30,28 @@ struct process {
   uint32_t file_name_len;     // the len of the input file_name(untokenized), used for setup_stack
   uint32_t argc;
   char** argv;
+  struct list children_list;
+  pid_t current_wait_on;
+};
+
+struct syn_wait {
+  pid_t p_pid;
+  pid_t c_pid;
+  struct semaphore wait_sema;
+  int exit_status;
+  struct list_elem elem;
+};
+
+// wrapper around child pid
+struct child_pid {
+   pid_t pid;
+   struct list_elem elem;
+};
+
+struct syn_load {
+  struct semaphore load_sema;
+  bool load_success;
+  char* file_name;
 };
 
 void userprog_init(void);
