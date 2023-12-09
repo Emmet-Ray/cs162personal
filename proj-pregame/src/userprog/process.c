@@ -77,12 +77,9 @@ pid_t process_execute(const char* file_name) {
     free(args);
   }
   // update main process's [child_pid_list] && [waiting_waited_list]
-  struct child_pid* child_id = palloc_get_page();
+  struct child_pid* child_id = palloc_get_page(PAL_ZERO);
   child_id->pid = tid;
   list_push_back(&waiting_waited_list, &child_id->elem);
-  struct waiting_waited* new_waiting_waited = palloc_get_page();
-  waiting_waited_init(new_waiting_waited, tid);
-  list_push_back(&waiting_waited_list, &new_waiting_waited->elem);
   return tid;
 }
 
@@ -167,6 +164,8 @@ void start_process(void* argument) {
   palloc_free_page(file_name);
   if (!success) {
     //sema_up(&temporary);
+    // find self in [waiting_waited_list] as a child, update the waiting_waited status
+    sema_up_wrapper();
     thread_exit();
   }
 
@@ -192,6 +191,8 @@ void start_process(void* argument) {
    does nothing. */
 int process_wait(pid_t child_pid UNUSED) {
   //sema_down(&temporary);
+  add_to_waiting_waited_list(child_pid);
+
   return 0;
 }
 
@@ -230,7 +231,10 @@ void process_exit(void) {
   cur->pcb = NULL;
   free(pcb_to_free);
 
+  // free [child_pid_list]
+  free_child_pid_list();
   //sema_up(&temporary);
+  sema_up_wrapper();
   thread_exit();
 }
 
@@ -668,10 +672,39 @@ void pthread_exit_main(void) {}
 
 // new added functions
 
-void waiting_waited_init(struct waiting_waited* elem, pid_t child_pid) {
-  elem->p_pid = thread_current()->pcb->main_thread->tid;
-  elem->c_pid = tid;
+void add_to_waiting_waited_list(pid_t child_pid) {
+  struct waiting_waited* elem = palloc_get_page(PAL_ZERO);
+  elem->p_pid = thread_current()->tid;
+  elem->c_pid = child_pid;
   elem->over = false;
   elem->exit_status = -1;
   sema_init(&elem->over_sema, 0);
+  list_push_back(&waiting_waited_list, &elem->elem);
+}
+
+// find self in [waiting_waited_list] as a child, 
+// update [over] to true, up [over_sema]
+void sema_up_wrapper() {
+  struct list_elem* e;
+  pid_t current_pid = thread_current()->tid;
+  for (e = list_begin(&waiting_waited_list); e != list_end(&waiting_waited_list);
+       e = list_next(e)) {
+      struct waiting_waited* current = list_entry(e, struct waiting_waited, elem);
+      if (current->c_pid == current_pid) {
+        current->over = true;
+        sema_up(&current->over_sema);
+        break;
+      }
+  }
+}
+
+
+void free_child_pid_list() {
+  struct list_elem* e;
+  struct process* cur_process = thread_current()->pcb;
+  for (e = list_begin(&cur_process->child_pid_list); e != list_end(&cur_process->child_pid_list);
+        e = list_next(e)) {
+      struct child_pid* to_free = list_entry(e, struct child_pid, elem);
+      palloc_free_page(to_free);
+  }
 }
