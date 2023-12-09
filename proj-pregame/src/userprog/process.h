@@ -73,6 +73,7 @@ void pthread_exit_main(void);
 
 // new added functions
 void add_to_waiting_waited_list(pid_t child_pid);
-void sema_up_wrapper();
-void free_child_pid_list();
+void sema_up_wrapper(void);
+void free_child_pid_list(void);
+void sema_down_wrapper(pid_t c_pid);
 #endif /* userprog/process.h */

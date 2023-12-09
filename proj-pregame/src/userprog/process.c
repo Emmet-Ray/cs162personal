@@ -76,10 +76,10 @@ pid_t process_execute(const char* file_name) {
     palloc_free_page(args->file_name);
     free(args);
   }
-  // update main process's [child_pid_list] && [waiting_waited_list]
+  // update main process's [child_pid_list]
   struct child_pid* child_id = palloc_get_page(PAL_ZERO);
   child_id->pid = tid;
-  list_push_back(&waiting_waited_list, &child_id->elem);
+  list_push_back(&thread_current()->pcb->child_pid_list, &child_id->elem);
   return tid;
 }
 
@@ -106,6 +106,7 @@ void start_process(void* argument) {
 
     // Continue initializing the PCB as normal
     t->pcb->main_thread = t;
+    list_init(&t->pcb->child_pid_list);
 
     //TODO: here,for one/many args, we need to cut it to one by one. Otherwise, 'open failed' would happen
     //     store somewhere? process struct member <args> <argv>
@@ -192,7 +193,7 @@ void start_process(void* argument) {
 int process_wait(pid_t child_pid UNUSED) {
   //sema_down(&temporary);
   add_to_waiting_waited_list(child_pid);
-
+  sema_down_wrapper(child_pid);
   return 0;
 }
 
@@ -231,8 +232,9 @@ void process_exit(void) {
   cur->pcb = NULL;
   free(pcb_to_free);
 
-  // free [child_pid_list]
-  free_child_pid_list();
+  // TODO: free [child_pid_list]
+  //free_child_pid_list();
+
   //sema_up(&temporary);
   sema_up_wrapper();
   thread_exit();
@@ -684,7 +686,7 @@ void add_to_waiting_waited_list(pid_t child_pid) {
 
 // find self in [waiting_waited_list] as a child, 
 // update [over] to true, up [over_sema]
-void sema_up_wrapper() {
+void sema_up_wrapper(void) {
   struct list_elem* e;
   pid_t current_pid = thread_current()->tid;
   for (e = list_begin(&waiting_waited_list); e != list_end(&waiting_waited_list);
@@ -698,13 +700,29 @@ void sema_up_wrapper() {
   }
 }
 
-
-void free_child_pid_list() {
+void free_child_pid_list(void) {
   struct list_elem* e;
   struct process* cur_process = thread_current()->pcb;
+  if (list_empty(&cur_process->child_pid_list)) {
+    return;
+  }
   for (e = list_begin(&cur_process->child_pid_list); e != list_end(&cur_process->child_pid_list);
         e = list_next(e)) {
       struct child_pid* to_free = list_entry(e, struct child_pid, elem);
       palloc_free_page(to_free);
   }
+}
+
+void sema_down_wrapper(pid_t c_pid) {
+  struct list_elem* e;
+  pid_t current_pid = thread_current()->tid;
+  struct waiting_waited* current;
+  for (e = list_begin(&waiting_waited_list); e != list_end(&waiting_waited_list);
+       e = list_next(e)) {
+      current = list_entry(e, struct waiting_waited, elem);
+      if (current->p_pid == current_pid && current->c_pid == c_pid) {
+        break;
+      }
+  }
+  sema_down(&current->over_sema);
 }
