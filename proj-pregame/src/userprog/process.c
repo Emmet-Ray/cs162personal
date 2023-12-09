@@ -673,5 +673,5 @@ void waiting_waited_init(struct waiting_waited* elem, pid_t child_pid) {
   elem->c_pid = tid;
   elem->over = false;
   elem->exit_status = -1;
-  sema_init(&elem->over_sema);
+  sema_init(&elem->over_sema, 0);
 }
