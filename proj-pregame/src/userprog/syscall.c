@@ -113,23 +113,7 @@ void halt(void) {
 }
 
 pid_t exec(const char* cmd_line) {
-  struct start_process_args args;
-  args.exec_syscall = true;
-  sema_init(&args.load_sema, 0);
-  args.file_name = palloc_get_page(0);
-
-  if (args.file_name == NULL)
-    return -1;
-  strlcpy(args.file_name, cmd_line, PGSIZE);
-
-  pid_t pid = thread_create("", PRI_DEFAULT, start_process, &args);
-  sema_down(&args.load_sema);
-  if (args.load_success) {
-    add_to_child_pid_list(pid);
-    return pid;
-  } else {
-    return -1;
-  }
+  
 }
 
 int wait(pid_t pid) {
