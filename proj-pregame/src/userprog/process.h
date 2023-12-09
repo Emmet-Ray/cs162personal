@@ -30,6 +30,7 @@ struct process {
   uint32_t file_name_len;     // the len of the input file_name(untokenized), used for setup_stack
   uint32_t argc;
   char** argv;
+  struct list child_pid_list;
 };
 
 // argument for function [start_process] in process.c
@@ -39,6 +40,19 @@ struct start_process_args {
    struct semaphore load_sema; // synchronization for load
    bool load_success;          // load result
 };
+
+struct child_pid {
+   pid_t pid;
+   struct list_elem elem;
+}
+
+struct waiting_waited {
+   pid_t p_pid; // parent pid
+   pid_t c_pid; // child pid
+   struct semaphore over_sema;
+   bool over;
+   int exit_status;
+}
 
 void userprog_init(void);
 

@@ -20,6 +20,8 @@
 #include "threads/thread.h"
 #include "threads/vaddr.h"
 
+struct list waiting_waited_list;
+
 static struct semaphore temporary;
 //static thread_func start_process NO_RETURN;
 static thread_func start_pthread NO_RETURN;
