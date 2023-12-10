@@ -21,6 +21,7 @@
 #include "threads/vaddr.h"
 
 struct list wait_list;
+struct list exit_process_list;
 
 static struct semaphore temporary;
 static thread_func start_process NO_RETURN;
@@ -49,6 +50,7 @@ void userprog_init(void) {
   t->pcb->current_wait_on = -1;
   list_init(&t->pcb->children_list);
   list_init(&wait_list);
+  list_init(&exit_process_list);
 }
 
 /* Starts a new thread running a user program loaded from
@@ -72,6 +74,8 @@ pid_t process_execute(const char* file_name) {
   tid = thread_create(file_name, PRI_DEFAULT, start_process, fn_copy);
   if (tid == TID_ERROR)
     palloc_free_page(fn_copy);
+  
+  add_to_children_list(tid);
   return tid;
 }
 
@@ -174,6 +178,15 @@ static void start_process(void* file_name_) {
    does nothing. */
 int process_wait(pid_t child_pid UNUSED) {
   sema_down(&temporary);
+  
+  struct exit_status* exit = find_in_exit_list(child_pid);
+  if (exit) {
+    // TODO: need to remove ?
+    return exit->exit_status;
+  } else {
+    // not exit, wait for it
+    struct syn_wait* result = add_to_wait_list(child_pid);
+  }
   return 0;
 }
 
@@ -646,3 +659,13 @@ void pthread_exit(void) {}
    This function will be implemented in Project 2: Multithreading. For
    now, it does nothing. */
 void pthread_exit_main(void) {}
+
+
+
+void add_to_children_list(pid_t child_pid);
+
+struct syn_wait* find_self_int_wait_list(void);
+struct syn_wait* add_to_wait_list(pid_t child_pid);
+
+void add_to_exit_list(int exit_status);
+struct exit_status* find_in_exit_list(pid_t pid);

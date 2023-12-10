@@ -34,11 +34,14 @@ struct process {
   pid_t current_wait_on;
 };
 
+struct exit_status {
+  pid_t pid;
+  int exit_status;
+};
 struct syn_wait {
   pid_t p_pid;
   pid_t c_pid;
   struct semaphore wait_sema;
-  int exit_status;
   struct list_elem elem;
 };
 
@@ -53,6 +56,7 @@ struct syn_load {
   bool load_success;
   char* file_name;
 };
+
 
 void userprog_init(void);
 
@@ -69,4 +73,12 @@ tid_t pthread_join(tid_t);
 void pthread_exit(void);
 void pthread_exit_main(void);
 
+// new additions
+void add_to_children_list(pid_t child_pid);
+
+struct syn_wait* find_self_int_wait_list(void);
+struct syn_wait* add_to_wait_list(pid_t child_pid);
+
+void add_to_exit_list(int exit_status);
+struct exit_status* find_in_exit_list(pid_t pid);
 #endif /* userprog/process.h */
