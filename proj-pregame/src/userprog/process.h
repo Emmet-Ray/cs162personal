@@ -37,6 +37,7 @@ struct process {
 struct exit_status {
   pid_t pid;
   int exit_status;
+  struct list_elem elem;
 };
 struct syn_wait {
   pid_t p_pid;
@@ -75,10 +76,12 @@ void pthread_exit_main(void);
 
 // new additions
 void add_to_children_list(pid_t child_pid);
+bool is_my_child(pid_t child_pid); 
 
 struct syn_wait* find_self_int_wait_list(void);
 struct syn_wait* add_to_wait_list(pid_t child_pid);
 
 void add_to_exit_list(int exit_status);
 struct exit_status* find_in_exit_list(pid_t pid);
+void show_exit_list();
 #endif /* userprog/process.h */

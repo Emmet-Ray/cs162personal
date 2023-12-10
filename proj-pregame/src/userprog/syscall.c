@@ -56,10 +56,9 @@ static void syscall_handler(struct intr_frame* f UNUSED) {
    */
 
   /* printf("System call number: %d\n", args[0]); */
-
   if (args[0] == SYS_EXIT) {
-    f->eax = args[1];
     printf("%s: exit(%d)\n", thread_current()->pcb->process_name, args[1]);
+    add_to_exit_list(args[1]);
     process_exit();
   } else if (args[0] == SYS_WRITE) {
     int fd = args[1]; 
@@ -113,12 +112,12 @@ void halt(void) {
 }
 
 pid_t exec(const char* cmd_line) {
-  //pid_t pid = process_execute(cmd_line);  
-  //return pid;
+  pid_t pid = process_execute(cmd_line);  
+  return pid;
 }
 
 int wait(pid_t pid) {
-  //int result = process_wait(pid);
-  //return result;
+  int result = process_wait(pid);
+  return result;
   return 0;
 }

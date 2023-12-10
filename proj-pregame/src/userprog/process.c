@@ -62,7 +62,7 @@ pid_t process_execute(const char* file_name) {
   char* fn_copy;
   tid_t tid;
 
-  sema_init(&temporary, 0);
+  //sema_init(&temporary, 0);
   /* Make a copy of FILE_NAME.
      Otherwise there's a race between the caller and load(). */
   fn_copy = palloc_get_page(0);
@@ -70,19 +70,29 @@ pid_t process_execute(const char* file_name) {
     return TID_ERROR;
   strlcpy(fn_copy, file_name, PGSIZE);
 
+  struct syn_load start_process_arg;
+  start_process_arg.load_success = false;
+  sema_init(&start_process_arg.load_sema, 0);
+  start_process_arg.file_name = fn_copy;
+
   /* Create a new thread to execute FILE_NAME. */
-  tid = thread_create(file_name, PRI_DEFAULT, start_process, fn_copy);
+  tid = thread_create(file_name, PRI_DEFAULT, start_process, &start_process_arg);
   if (tid == TID_ERROR)
     palloc_free_page(fn_copy);
-  
-  add_to_children_list(tid);
+  sema_down(&start_process_arg.load_sema); 
+  if (start_process_arg.load_success) {
+    add_to_children_list(tid);
+  } else {
+    tid = -1;
+  }
   return tid;
 }
 
 /* A thread function that loads a user process and starts it
    running. */
-static void start_process(void* file_name_) {
-  char* file_name = (char*)file_name_;
+static void start_process(void* start_process_arg_) {
+  struct syn_load* start_process_arg = (struct syn_load*)start_process_arg_;
+  char* file_name = (char*)start_process_arg->file_name;
   struct thread* t = thread_current();
   struct intr_frame if_;
   bool success, pcb_success;
@@ -139,6 +149,8 @@ static void start_process(void* file_name_) {
     if_.eflags = FLAG_IF | FLAG_MBS;
     success = load(file_name, &if_.eip, &if_.esp);
   }
+  start_process_arg->load_success = success;
+  sema_up(&start_process_arg->load_sema);
 
   /* Handle failure with succesful PCB malloc. Must free the PCB */
   if (!success && pcb_success) {
@@ -153,7 +165,13 @@ static void start_process(void* file_name_) {
   /* Clean up. Exit on failure or jump to userspace */
   palloc_free_page(file_name);
   if (!success) {
-    sema_up(&temporary);
+    //sema_up(&temporary);
+    struct syn_wait* result = find_self_int_wait_list();
+    if (result) {
+      // parent is waiting for me, need to notify(sema_up) him/her
+      sema_up(&result->wait_sema);
+    }
+    add_to_exit_list(-1);
     thread_exit();
   }
 
@@ -177,17 +195,21 @@ static void start_process(void* file_name_) {
    This function will be implemented in problem 2-2.  For now, it
    does nothing. */
 int process_wait(pid_t child_pid UNUSED) {
-  sema_down(&temporary);
-  
+  // TODO: need to remove ?
+  if (!is_my_child(child_pid)) {
+    return -1;
+  }
   struct exit_status* exit = find_in_exit_list(child_pid);
-  if (exit) {
-    // TODO: need to remove ?
-    return exit->exit_status;
-  } else {
+  if (!exit) {
     // not exit, wait for it
     struct syn_wait* result = add_to_wait_list(child_pid);
+    sema_down(&result->wait_sema);
+    exit = find_in_exit_list(child_pid);
+    //remove_from_wait_list(child_pid);
   }
-  return 0;
+  remove_from_childrent_list(child_pid);
+  //remove_from_exit_list(child_pid);
+  return exit->exit_status;
 }
 
 /* Free the current process's resources. */
@@ -225,7 +247,19 @@ void process_exit(void) {
   cur->pcb = NULL;
   free(pcb_to_free);
 
-  sema_up(&temporary);
+  struct syn_wait* result = find_self_int_wait_list();
+  if (result) {
+    // parent is waiting for me, need to notify(sema_up) him/her
+    sema_up(&result->wait_sema);
+  }
+  // else just add to exit_status
+  struct exit_status* exit = find_in_exit_list(thread_current()->tid);
+  if (!exit) {
+    // didn't exit with exit syscall
+    add_to_exit_list(-1);
+    printf("<2>\n");
+  }
+  //sema_up(&temporary);
   thread_exit();
 }
 
@@ -662,10 +696,134 @@ void pthread_exit_main(void) {}
 
 
 
-void add_to_children_list(pid_t child_pid);
+void add_to_children_list(pid_t child_pid) {
+  struct child_pid* child = palloc_get_page(PAL_ZERO);
+  child->pid = child_pid;
+  list_push_back(&thread_current()->pcb->children_list, &child->elem);
+}
 
-struct syn_wait* find_self_int_wait_list(void);
-struct syn_wait* add_to_wait_list(pid_t child_pid);
+void remove_from_childrent_list(pid_t child_pid) {
+  struct list_elem* e = NULL;
+  struct process* current = thread_current()->pcb;
+  struct child_pid* current_child;
+  for (e = list_begin(&current->children_list); e != list_end(&current->children_list);
+       e = list_next(e)) {
+    current_child = list_entry(e, struct child_pid, elem);
+    if (current_child->pid == child_pid) {
+      break;
+    }
+  }
+  if (e) {
+    list_remove(e);
+  }
+}
 
-void add_to_exit_list(int exit_status);
-struct exit_status* find_in_exit_list(pid_t pid);
+bool is_my_child(pid_t child_pid) {
+  struct list_elem* e;
+  struct process* current = thread_current()->pcb;
+  struct child_pid* current_child;
+  for (e = list_begin(&current->children_list); e != list_end(&current->children_list);
+       e = list_next(e)) {
+    current_child = list_entry(e, struct child_pid, elem);
+    if (current_child->pid == child_pid) {
+      return true;
+    }
+  }
+  return false;
+}
+
+
+struct syn_wait* find_self_int_wait_list(void) {
+  struct list_elem* e;
+  struct thread* current_thread = thread_current();
+  struct syn_wait* current_elem;
+  for (e = list_begin(&wait_list); e != list_end(&wait_list);
+       e = list_next(e)) {
+    current_elem = list_entry(e, struct syn_wait, elem);
+    if (current_thread->tid == current_elem->c_pid) {
+      return current_elem;
+    }
+  }
+  return NULL;
+}
+struct syn_wait* add_to_wait_list(pid_t child_pid) {
+  struct syn_wait* result = palloc_get_page(PAL_ZERO);
+  result->p_pid = thread_current()->tid;
+  result->c_pid = child_pid;
+  sema_init(&result->wait_sema, 0);
+  list_push_back(&wait_list, &result->elem);
+  return result;
+}
+void remove_from_wait_list(pid_t child_pid) {
+  struct list_elem* e = NULL;
+  struct thread* current_thread = thread_current();
+  struct syn_wait* current_elem;
+  for (e = list_begin(&wait_list); e != list_end(&wait_list);
+       e = list_next(e)) {
+    current_elem = list_entry(e, struct syn_wait, elem);
+    if (current_thread->tid == current_elem->p_pid && child_pid == current_elem->c_pid) {
+      break;
+    }
+  }
+  if (e) {
+    list_remove(e);
+  }
+}
+
+void add_to_exit_list(int exit_status) {
+  struct exit_status* result = palloc_get_page(PAL_ZERO);
+  result->exit_status = exit_status;
+  result->pid = thread_current()->tid;
+  list_push_back(&exit_process_list, &result->elem);
+}
+void remove_from_exit_list(pid_t pid) {
+  struct list_elem* e;
+  struct exit_status* current_elem;
+  for (e = list_begin(&exit_process_list); e != list_end(&exit_process_list);
+       e = list_next(e)) {
+    current_elem = list_entry(e, struct exit_status, elem);
+    if (pid == current_elem->pid) {
+      break;
+    }
+  }
+  if (e) {
+    list_remove(e);
+  }
+}
+struct exit_status* find_in_exit_list(pid_t pid) {
+  struct list_elem* e;
+  struct exit_status* current_elem;
+  for (e = list_begin(&exit_process_list); e != list_end(&exit_process_list);
+       e = list_next(e)) {
+    current_elem = list_entry(e, struct exit_status, elem);
+    if (pid == current_elem->pid) {
+      return current_elem;
+    }
+  }
+  return NULL;
+}
+
+
+void show_children() {
+  struct list_elem* e;
+  struct process* current = thread_current()->pcb;
+  struct child_pid* current_child;
+  printf("****\t children list\n");
+  for (e = list_begin(&current->children_list); e != list_end(&current->children_list);
+       e = list_next(e)) {
+    current_child = list_entry(e, struct child_pid, elem);
+    printf("%d\n", current_child->pid);
+  }
+}
+
+void show_exit_list() {
+  struct list_elem* e;
+  struct exit_status* current_elem;
+  printf("****\t exit list\n");
+  printf("\t pid \t exit_status\n"); 
+  for (e = list_begin(&exit_process_list); e != list_end(&exit_process_list);
+       e = list_next(e)) {
+    current_elem = list_entry(e, struct exit_status, elem);
+    printf("\t %d \t %d\n", current_elem->pid, current_elem->exit_status); 
+  }
+}
