@@ -56,8 +56,10 @@ static void syscall_handler(struct intr_frame* f UNUSED) {
    */
 
   /* printf("System call number: %d\n", args[0]); */
+  if (invalid_vaddr(args)) {
+    process_exit();
+  }
   if (args[0] == SYS_EXIT) {
-    printf("%s: exit(%d)\n", thread_current()->pcb->process_name, args[1]);
     add_to_exit_list(args[1]);
     process_exit();
   } else if (args[0] == SYS_WRITE) {
@@ -83,11 +85,9 @@ static void syscall_handler(struct intr_frame* f UNUSED) {
   } else if (args[0] == SYS_EXEC) {
     // need to check : 1. the string pointer 2. the string address 3. the string (across boundary)
     if (invalid_string_pointer((void*)(args + 1)) || invalid_vaddr((void*)args[1]) || invalid_string((void*)args[1])) {
-      printf("%s: exit(%d)\n", thread_current()->pcb->process_name, -1);
       process_exit();
     } 
-    char* cmd_line = (char*)args[1];
-    f->eax = exec(cmd_line);
+    f->eax = exec((char*)args[1]);
   } else if (args[0] == SYS_WAIT) {
     f->eax = wait(args[1]);
   }
@@ -119,5 +119,4 @@ pid_t exec(const char* cmd_line) {
 int wait(pid_t pid) {
   int result = process_wait(pid);
   return result;
-  return 0;
 }

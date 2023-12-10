@@ -23,7 +23,6 @@
 struct list wait_list;
 struct list exit_process_list;
 
-static struct semaphore temporary;
 static thread_func start_process NO_RETURN;
 static thread_func start_pthread NO_RETURN;
 static bool load(const char* file_name, void (**eip)(void), void** esp);
@@ -47,7 +46,6 @@ void userprog_init(void) {
 
   /* Kill the kernel if we did not succeed */
   ASSERT(success);
-  t->pcb->current_wait_on = -1;
   list_init(&t->pcb->children_list);
   list_init(&wait_list);
   list_init(&exit_process_list);
@@ -62,7 +60,6 @@ pid_t process_execute(const char* file_name) {
   char* fn_copy;
   tid_t tid;
 
-  //sema_init(&temporary, 0);
   /* Make a copy of FILE_NAME.
      Otherwise there's a race between the caller and load(). */
   fn_copy = palloc_get_page(0);
@@ -110,7 +107,6 @@ static void start_process(void* start_process_arg_) {
 
     // Continue initializing the PCB as normal
     t->pcb->main_thread = t;
-    t->pcb->current_wait_on = -1;
     list_init(&t->pcb->children_list);
 
     //TODO: here,for one/many args, we need to cut it to one by one. Otherwise, 'open failed' would happen
@@ -165,7 +161,6 @@ static void start_process(void* start_process_arg_) {
   /* Clean up. Exit on failure or jump to userspace */
   palloc_free_page(file_name);
   if (!success) {
-    //sema_up(&temporary);
     struct syn_wait* result = find_self_int_wait_list();
     if (result) {
       // parent is waiting for me, need to notify(sema_up) him/her
@@ -195,7 +190,6 @@ static void start_process(void* start_process_arg_) {
    This function will be implemented in problem 2-2.  For now, it
    does nothing. */
 int process_wait(pid_t child_pid UNUSED) {
-  // TODO: need to remove ?
   if (!is_my_child(child_pid)) {
     return -1;
   }
@@ -205,10 +199,9 @@ int process_wait(pid_t child_pid UNUSED) {
     struct syn_wait* result = add_to_wait_list(child_pid);
     sema_down(&result->wait_sema);
     exit = find_in_exit_list(child_pid);
-    //remove_from_wait_list(child_pid);
+    remove_from_wait_list(child_pid);
   }
-  remove_from_childrent_list(child_pid);
-  //remove_from_exit_list(child_pid);
+  remove_from_children_list(child_pid);
   return exit->exit_status;
 }
 
@@ -216,36 +209,6 @@ int process_wait(pid_t child_pid UNUSED) {
 void process_exit(void) {
   struct thread* cur = thread_current();
   uint32_t* pd;
-
-  /* If this thread does not have a PCB, don't worry */
-  if (cur->pcb == NULL) {
-    thread_exit();
-    NOT_REACHED();
-  }
-
-  /* Destroy the current process's page directory and switch back
-     to the kernel-only page directory. */
-  pd = cur->pcb->pagedir;
-  if (pd != NULL) {
-    /* Correct ordering here is crucial.  We must set
-         cur->pcb->pagedir to NULL before switching page directories,
-         so that a timer interrupt can't switch back to the
-         process page directory.  We must activate the base page
-         directory before destroying the process's page
-         directory, or our active page directory will be one
-         that's been freed (and cleared). */
-    cur->pcb->pagedir = NULL;
-    pagedir_activate(NULL);
-    pagedir_destroy(pd);
-  }
-
-  /* Free the PCB of this process and kill this thread
-     Avoid race where PCB is freed before t->pcb is set to NULL
-     If this happens, then an unfortuantely timed timer interrupt
-     can try to activate the pagedir, but it is now freed memory */
-  struct process* pcb_to_free = cur->pcb;
-  cur->pcb = NULL;
-  free(pcb_to_free);
 
   struct syn_wait* result = find_self_int_wait_list();
   if (result) {
@@ -257,9 +220,40 @@ void process_exit(void) {
   if (!exit) {
     // didn't exit with exit syscall
     add_to_exit_list(-1);
-    printf("<2>\n");
+    printf("%s: exit(%d)\n", thread_current()->pcb->process_name, -1);
+  } else {
+    printf("%s: exit(%d)\n", thread_current()->pcb->process_name, exit->exit_status);
   }
-  //sema_up(&temporary);
+
+  /* If this thread does not have a PCB, don't worry */
+  if (cur->pcb == NULL) {
+    thread_exit();
+    NOT_REACHED();
+  }
+
+  /* Destroy the current process's page directory and switch back
+      to the kernel-only page directory. */
+  pd = cur->pcb->pagedir;
+  if (pd != NULL) {
+    /* Correct ordering here is crucial.  We must set
+          cur->pcb->pagedir to NULL before switching page directories,
+          so that a timer interrupt can't switch back to the
+          process page directory.  We must activate the base page
+          directory before destroying the process's page
+          directory, or our active page directory will be one
+          that's been freed (and cleared). */
+    cur->pcb->pagedir = NULL;
+    pagedir_activate(NULL);
+    pagedir_destroy(pd);
+  }
+
+  /* Free the PCB of this process and kill this thread
+      Avoid race where PCB is freed before t->pcb is set to NULL
+      If this happens, then an unfortuantely timed timer interrupt
+      can try to activate the pagedir, but it is now freed memory */
+  struct process* pcb_to_free = cur->pcb;
+  cur->pcb = NULL;
+  free(pcb_to_free);
   thread_exit();
 }
 
@@ -702,7 +696,7 @@ void add_to_children_list(pid_t child_pid) {
   list_push_back(&thread_current()->pcb->children_list, &child->elem);
 }
 
-void remove_from_childrent_list(pid_t child_pid) {
+void remove_from_children_list(pid_t child_pid) {
   struct list_elem* e = NULL;
   struct process* current = thread_current()->pcb;
   struct child_pid* current_child;
@@ -715,6 +709,7 @@ void remove_from_childrent_list(pid_t child_pid) {
   }
   if (e) {
     list_remove(e);
+    palloc_free_page(current_child);
   }
 }
 
@@ -767,6 +762,7 @@ void remove_from_wait_list(pid_t child_pid) {
   }
   if (e) {
     list_remove(e);
+    palloc_free_page(current_elem);
   }
 }
 
@@ -777,7 +773,7 @@ void add_to_exit_list(int exit_status) {
   list_push_back(&exit_process_list, &result->elem);
 }
 void remove_from_exit_list(pid_t pid) {
-  struct list_elem* e;
+  struct list_elem* e = NULL;
   struct exit_status* current_elem;
   for (e = list_begin(&exit_process_list); e != list_end(&exit_process_list);
        e = list_next(e)) {
@@ -786,8 +782,9 @@ void remove_from_exit_list(pid_t pid) {
       break;
     }
   }
-  if (e) {
+  if (e != list_end(&exit_process_list)) {
     list_remove(e);
+    palloc_free_page(current_elem);
   }
 }
 struct exit_status* find_in_exit_list(pid_t pid) {

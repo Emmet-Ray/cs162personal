@@ -31,7 +31,7 @@ struct process {
   uint32_t argc;
   char** argv;
   struct list children_list;
-  pid_t current_wait_on;
+  int exit_status;
 };
 
 struct exit_status {
@@ -77,11 +77,15 @@ void pthread_exit_main(void);
 // new additions
 void add_to_children_list(pid_t child_pid);
 bool is_my_child(pid_t child_pid); 
+void remove_from_children_list(pid_t child_pid); 
 
 struct syn_wait* find_self_int_wait_list(void);
 struct syn_wait* add_to_wait_list(pid_t child_pid);
+void remove_from_wait_list(pid_t child_pid); 
 
 void add_to_exit_list(int exit_status);
+void remove_from_exit_list(pid_t pid); 
 struct exit_status* find_in_exit_list(pid_t pid);
+
 void show_exit_list();
 #endif /* userprog/process.h */
