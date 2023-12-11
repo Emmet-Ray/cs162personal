@@ -11,9 +11,16 @@
 #include "devices/shutdown.h"
 #include "lib/syscall-nr.h"
 #include "lib/string.h"
+#include "filesys/filesys.h"
 
 
 static void syscall_handler(struct intr_frame*);
+
+bool invalid_vaddr(void* addr); 
+bool invalid_string(void* string_); 
+bool invalid_string_pointer(void* string_p); 
+bool invalid_buffer(void* buffer); 
+
 // check an [addr] is valid or not, if invalid return true;
 // invalid type : NULL || not user_vaddr || unmapped || ...
 bool invalid_vaddr(void* addr) {
@@ -39,6 +46,9 @@ bool invalid_string_pointer(void* string_p) {
     } else {
       return invalid_vaddr(string_p) || invalid_vaddr(up_bound);
     }
+}
+bool invalid_buffer(void* buffer) {
+  return invalid_string_pointer((void*)(buffer)) || invalid_vaddr((void*)*(uint32_t*)buffer) || invalid_string((void*)*(uint32_t*)buffer);
 }
 extern void start_process(void* argument);
 void syscall_init(void) { intr_register_int(0x30, 3, INTR_ON, syscall_handler, "syscall"); }
@@ -75,7 +85,7 @@ static void syscall_handler(struct intr_frame* f UNUSED) {
       return;
     }
 
-    int result = syscall_write(fd, buffer, size);
+    int result = write(fd, buffer, size);
     f->eax = result;
   } else if (args[0] == SYS_PRACTICE) {
     int integer = args[1];
@@ -84,16 +94,31 @@ static void syscall_handler(struct intr_frame* f UNUSED) {
     halt();
   } else if (args[0] == SYS_EXEC) {
     // need to check : 1. the string pointer 2. the string address 3. the string (across boundary)
-    if (invalid_string_pointer((void*)(args + 1)) || invalid_vaddr((void*)args[1]) || invalid_string((void*)args[1])) {
+    if (invalid_buffer((void*)(args + 1))) {
       process_exit();
     } 
     f->eax = exec((char*)args[1]);
   } else if (args[0] == SYS_WAIT) {
     f->eax = wait(args[1]);
+  } else if (args[0] == SYS_CREATE) {
+    if (invalid_buffer((void*)(args + 1)) || invalid_vaddr((void*)(args + 2))) {
+      process_exit();
+    } 
+    f->eax = create((char*)args[1], (unsigned)args[2]);
+  } else if (args[0] == SYS_REMOVE) {
+    if (invalid_buffer((void*)(args + 1))) {
+      process_exit();
+    }
+    f->eax = remove((char*)args[1]);
+  } else if (args[0] == SYS_OPEN) {
+    if (invalid_buffer((void*)(args + 1))) {
+      process_exit();
+    }
+    f->eax = open((char*)args[1]);
   }
 }
 
-int syscall_write(int fd, const void *buffer, unsigned size) {
+int write(int fd, const void *buffer, unsigned size) {
     int result = size;
     if (fd == 1) {
       // STDOUT 
@@ -119,4 +144,21 @@ pid_t exec(const char* cmd_line) {
 int wait(pid_t pid) {
   int result = process_wait(pid);
   return result;
+}
+
+// file operation syscalls
+bool create(const char* file, unsigned file_size) {
+  return filesys_create(file, file_size);
+}
+
+bool remove(const char* file) {
+  return filesys_remove(file);
+}
+
+int open(const char* file) {
+  struct file* result = filesys_open(file);
+  if (!result) {
+    return -1;
+  }
+  return 4;
 }

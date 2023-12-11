@@ -31,7 +31,6 @@ struct process {
   uint32_t argc;
   char** argv;
   struct list children_list;
-  int exit_status;
 };
 
 struct exit_status {
@@ -87,5 +86,5 @@ void add_to_exit_list(int exit_status);
 void remove_from_exit_list(pid_t pid); 
 struct exit_status* find_in_exit_list(pid_t pid);
 
-void show_exit_list();
+void show_exit_list(void);
 #endif /* userprog/process.h */
