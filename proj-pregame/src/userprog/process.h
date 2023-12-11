@@ -31,8 +31,18 @@ struct process {
   uint32_t argc;
   char** argv;
   struct list children_list;
+  int next_fd;
+  struct list file_list;
 };
 
+// data structures for file operation syscalls
+struct fd_file_description {
+  struct list_elem elem;
+  int fd;
+  struct file* file_description;
+};
+
+// data structures for process control syscalls
 struct exit_status {
   pid_t pid;
   int exit_status;
@@ -87,4 +97,10 @@ void remove_from_exit_list(pid_t pid);
 struct exit_status* find_in_exit_list(pid_t pid);
 
 void show_exit_list(void);
+
+// for file operation syscall
+int add_to_file_list(struct file* file_desc);
+struct file* find_in_file_list(int fd);
+void remove_from_file_list(int fd);
+void close_all_fd(void);
 #endif /* userprog/process.h */

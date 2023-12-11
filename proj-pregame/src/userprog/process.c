@@ -49,6 +49,8 @@ void userprog_init(void) {
   list_init(&t->pcb->children_list);
   list_init(&wait_list);
   list_init(&exit_process_list);
+  t->pcb->next_fd = 3;
+  list_init(&t->pcb->file_list);
 }
 
 /* Starts a new thread running a user program loaded from
@@ -56,7 +58,6 @@ void userprog_init(void) {
    before process_execute() returns.  Returns the new process's
    process id, or TID_ERROR if the thread cannot be created. */
 pid_t process_execute(const char* file_name) {
-  //printf("file name : %s\n", file_name);
   char* fn_copy;
   tid_t tid;
 
@@ -108,6 +109,8 @@ static void start_process(void* start_process_arg_) {
     // Continue initializing the PCB as normal
     t->pcb->main_thread = t;
     list_init(&t->pcb->children_list);
+    t->pcb->next_fd = 3;
+    list_init(&t->pcb->file_list);
 
     //TODO: here,for one/many args, we need to cut it to one by one. Otherwise, 'open failed' would happen
     //     store somewhere? process struct member <args> <argv>
@@ -207,6 +210,7 @@ int process_wait(pid_t child_pid UNUSED) {
 
 /* Free the current process's resources. */
 void process_exit(void) {
+
   struct thread* cur = thread_current();
   uint32_t* pd;
 
@@ -224,6 +228,8 @@ void process_exit(void) {
   } else {
     printf("%s: exit(%d)\n", thread_current()->pcb->process_name, exit->exit_status);
   }
+
+  close_all_fd();
 
   /* If this thread does not have a PCB, don't worry */
   if (cur->pcb == NULL) {
@@ -823,4 +829,62 @@ void show_exit_list() {
     current_elem = list_entry(e, struct exit_status, elem);
     printf("\t %d \t %d\n", current_elem->pid, current_elem->exit_status); 
   }
+}
+
+int add_to_file_list(struct file* file_desc) {
+  struct thread* t = thread_current();
+  int return_result = t->pcb->next_fd;
+  t->pcb->next_fd++;
+
+  struct fd_file_description* new_elem = palloc_get_page(PAL_ZERO);
+  new_elem->fd = return_result;
+  new_elem->file_description = file_desc;
+
+  list_push_back(&t->pcb->file_list, &new_elem->elem);
+  return return_result;
+}
+
+struct file* find_in_file_list(int fd) {
+  struct process* cur = thread_current()->pcb;
+  struct list_elem* e;
+  struct fd_file_description* cur_elem;
+  for (e = list_begin(&cur->file_list); e != list_end(&cur->file_list);
+       e = list_next(e)) {
+   cur_elem = list_entry(e, struct fd_file_description, elem); 
+   if (fd == cur_elem->fd) {
+     return cur_elem->file_description;
+   }
+  }
+  return NULL;
+}
+
+void remove_from_file_list(int fd) {
+  struct process* cur = thread_current()->pcb;
+  struct list_elem* e;
+  struct fd_file_description* cur_elem;
+  for (e = list_begin(&cur->file_list); e != list_end(&cur->file_list);
+       e = list_next(e)) {
+   cur_elem = list_entry(e, struct fd_file_description, elem); 
+   if (fd == cur_elem->fd) {
+     list_remove(e);
+     break;
+   }
+  }
+  palloc_free_page(cur_elem);
+}
+ 
+void close_all_fd(void) {
+  struct process* cur = thread_current()->pcb;
+  struct list_elem* old_e;
+  struct list_elem* next_e;
+  struct fd_file_description* cur_elem;
+  for (next_e = list_begin(&cur->file_list); next_e != list_end(&cur->file_list);
+       ) {
+    cur_elem = list_entry(next_e, struct fd_file_description, elem); 
+    old_e = next_e;
+    next_e = list_next(next_e);
+
+    list_remove(old_e);
+    palloc_free_page(cur_elem);
+   }
 }

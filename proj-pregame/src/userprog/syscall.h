@@ -12,4 +12,9 @@ int wait(pid_t pid);
 bool create(const char* file, unsigned file_size);
 bool remove(const char* file);
 int open(const char* file);
+int filesize(int fd);
+int read (int fd, void *buffer, unsigned size);
+void seek (int fd, unsigned position);
+unsigned tell(int fd);
+void close (int fd);
 #endif /* userprog/syscall.h */

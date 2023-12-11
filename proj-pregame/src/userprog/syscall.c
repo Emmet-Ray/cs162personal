@@ -12,6 +12,7 @@
 #include "lib/syscall-nr.h"
 #include "lib/string.h"
 #include "filesys/filesys.h"
+#include "filesys/file.h"
 
 
 static void syscall_handler(struct intr_frame*);
@@ -66,27 +67,19 @@ static void syscall_handler(struct intr_frame* f UNUSED) {
    */
 
   /* printf("System call number: %d\n", args[0]); */
-  if (invalid_vaddr(args)) {
+  if (invalid_vaddr(args) || invalid_string_pointer((void*)args)) {
+    add_to_exit_list(-1);
     process_exit();
   }
   if (args[0] == SYS_EXIT) {
     add_to_exit_list(args[1]);
     process_exit();
   } else if (args[0] == SYS_WRITE) {
-    int fd = args[1]; 
-    //printf("args[2] : %s\n", (char*)args[2]);
-    // args[2] is just the address
-    void* buffer = (void*)args[2];
-    size_t size = args[3];
-    // error case : 
-    // fd < 0
-    if (fd < 0) {
-      f->eax = -1;
-      return;
+    if (invalid_vaddr((void*)(args + 1)) || invalid_buffer((void*)(args + 2)) || invalid_vaddr((void*)(args + 3))) {
+      add_to_exit_list(-1);
+      process_exit();
     }
-
-    int result = write(fd, buffer, size);
-    f->eax = result;
+    f->eax = write(args[1], (void*)args[2], args[3]);
   } else if (args[0] == SYS_PRACTICE) {
     int integer = args[1];
     f->eax = practice(integer);
@@ -95,6 +88,7 @@ static void syscall_handler(struct intr_frame* f UNUSED) {
   } else if (args[0] == SYS_EXEC) {
     // need to check : 1. the string pointer 2. the string address 3. the string (across boundary)
     if (invalid_buffer((void*)(args + 1))) {
+      add_to_exit_list(-1);
       process_exit();
     } 
     f->eax = exec((char*)args[1]);
@@ -102,30 +96,53 @@ static void syscall_handler(struct intr_frame* f UNUSED) {
     f->eax = wait(args[1]);
   } else if (args[0] == SYS_CREATE) {
     if (invalid_buffer((void*)(args + 1)) || invalid_vaddr((void*)(args + 2))) {
+      add_to_exit_list(-1);
       process_exit();
     } 
     f->eax = create((char*)args[1], (unsigned)args[2]);
   } else if (args[0] == SYS_REMOVE) {
     if (invalid_buffer((void*)(args + 1))) {
+      add_to_exit_list(-1);
       process_exit();
     }
     f->eax = remove((char*)args[1]);
   } else if (args[0] == SYS_OPEN) {
     if (invalid_buffer((void*)(args + 1))) {
+      add_to_exit_list(-1);
       process_exit();
     }
     f->eax = open((char*)args[1]);
-  }
-}
-
-int write(int fd, const void *buffer, unsigned size) {
-    int result = size;
-    if (fd == 1) {
-      // STDOUT 
-      putbuf(buffer, size);
+  } else if (args[0] == SYS_FILESIZE) {
+    if (invalid_vaddr((void*)(args + 1))) {
+      add_to_exit_list(-1);
+      process_exit();
     }
-    
-    return result;
+    f->eax = filesize(args[1]);
+  } else if (args[0] == SYS_READ) {
+    if (invalid_vaddr((void*)(args + 1)) || invalid_vaddr((void*)(args + 2)) || invalid_string_pointer((void*)(args[2])) || invalid_vaddr((void*)(args + 3))) {
+      add_to_exit_list(-1);
+      process_exit();
+    }
+    f->eax = read(args[1], (void*)args[2], args[3]);
+  } else if (args[0] == SYS_SEEK) {
+    if (invalid_vaddr((void*)(args + 1)) || invalid_vaddr((void*)(args + 2))) {
+      add_to_exit_list(-1);
+      process_exit();
+    }
+    seek(args[1], args[2]);
+  } else if (args[0] == SYS_TELL) {
+    if (invalid_vaddr((void*)(args + 1))) {
+      add_to_exit_list(-1);
+      process_exit();
+    }
+    f->eax = tell(args[1]);
+  } else if (args[0] == SYS_CLOSE) {
+    if (invalid_vaddr((void*)(args + 1))) {
+      add_to_exit_list(-1);
+      process_exit();
+    }
+    close(args[1]);
+  }
 }
 
 int practice(int i) {
@@ -137,6 +154,7 @@ void halt(void) {
 }
 
 pid_t exec(const char* cmd_line) {
+
   pid_t pid = process_execute(cmd_line);  
   return pid;
 }
@@ -160,5 +178,63 @@ int open(const char* file) {
   if (!result) {
     return -1;
   }
-  return 4;
+  return add_to_file_list(result);
+}
+
+int filesize(int fd) {
+  struct file* result = find_in_file_list(fd);
+  if (!result) {
+    return -1;
+  }
+  return file_length(result);
+}
+
+int read (int fd, void *buffer, unsigned size) {
+  // todo: stdin case
+  if (fd == 1) {
+  }
+  struct file* result = find_in_file_list(fd);
+  if (!result) {
+    return -1;
+  }
+  return file_read(result, buffer, size);
+}
+
+int write(int fd, const void *buffer, unsigned size) {
+  if (fd == 1) {
+    // STDOUT 
+    // todo: maybe need to break up large buffers
+    putbuf(buffer, size);
+    return size;
+  }
+  struct file* result = find_in_file_list(fd);
+  if (!result) {
+    return -1;
+  } 
+  return file_write(result, buffer, size);
+}
+
+void seek (int fd, unsigned position) {
+  struct file* result = find_in_file_list(fd);
+  if (!result) {
+    return;
+  } 
+  file_seek(result, position);
+}
+
+unsigned tell(int fd) {
+  struct file* result = find_in_file_list(fd);
+  if (!result) {
+    return -1;
+  } 
+  file_tell(result);
+}
+
+void close (int fd) {
+  struct file* result = find_in_file_list(fd);
+  if (!result) {
+    return;
+  } 
+  file_close(result);
+  remove_from_file_list(fd);
 }
