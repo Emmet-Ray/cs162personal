@@ -51,6 +51,8 @@ void userprog_init(void) {
   list_init(&exit_process_list);
   t->pcb->next_fd = 3;
   list_init(&t->pcb->file_list);
+  // temporary
+  lock_init(&temporary);
 }
 
 /* Starts a new thread running a user program loaded from
@@ -172,7 +174,8 @@ static void start_process(void* start_process_arg_) {
     add_to_exit_list(-1);
     thread_exit();
   }
-
+  t->pcb->myself = filesys_open(t->pcb->process_name);
+  file_deny_write(t->pcb->myself);
   /* Start the user process by simulating a return from an
      interrupt, implemented by intr_exit (in
      threads/intr-stubs.S).  Because intr_exit takes all of its
@@ -213,6 +216,9 @@ void process_exit(void) {
 
   struct thread* cur = thread_current();
   uint32_t* pd;
+
+  file_allow_write(cur->pcb->myself);
+  file_close(cur->pcb->myself);
 
   struct syn_wait* result = find_self_int_wait_list();
   if (result) {

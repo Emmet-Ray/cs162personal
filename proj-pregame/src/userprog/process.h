@@ -31,9 +31,13 @@ struct process {
   uint32_t argc;
   char** argv;
   struct list children_list;
-  int next_fd;
+  int next_fd;          // used for file operation
   struct list file_list;
+  struct file* myself; // used for deny_write executable file
 };
+
+// temporary : global lock for file operation syscall
+struct lock temporary;
 
 // data structures for file operation syscalls
 struct fd_file_description {

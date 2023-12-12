@@ -72,6 +72,9 @@ static void syscall_handler(struct intr_frame* f UNUSED) {
     process_exit();
   }
   if (args[0] == SYS_EXIT) {
+    if (invalid_vaddr((void*)(args + 1))) {
+      process_exit();
+    }
     add_to_exit_list(args[1]);
     process_exit();
   } else if (args[0] == SYS_WRITE) {
@@ -166,11 +169,17 @@ int wait(pid_t pid) {
 
 // file operation syscalls
 bool create(const char* file, unsigned file_size) {
-  return filesys_create(file, file_size);
+  lock_acquire(&temporary);
+  bool result = filesys_create(file, file_size);
+  lock_release(&temporary);
+  return result;
 }
 
 bool remove(const char* file) {
-  return filesys_remove(file);
+  lock_acquire(&temporary);
+  bool result = filesys_remove(file);
+  lock_release(&temporary);
+  return result;
 }
 
 int open(const char* file) {
@@ -178,7 +187,10 @@ int open(const char* file) {
   if (!result) {
     return -1;
   }
-  return add_to_file_list(result);
+  lock_acquire(&temporary);
+  int result_ = add_to_file_list(result);
+  lock_release(&temporary);
+  return result_;
 }
 
 int filesize(int fd) {
@@ -186,7 +198,10 @@ int filesize(int fd) {
   if (!result) {
     return -1;
   }
-  return file_length(result);
+  lock_acquire(&temporary);
+  int result_ = file_length(result);
+  lock_release(&temporary);
+  return result_;
 }
 
 int read (int fd, void *buffer, unsigned size) {
@@ -197,21 +212,30 @@ int read (int fd, void *buffer, unsigned size) {
   if (!result) {
     return -1;
   }
-  return file_read(result, buffer, size);
+  lock_acquire(&temporary);
+  int result_ = file_read(result, buffer, size);
+  lock_release(&temporary);
+  return result_;
 }
 
 int write(int fd, const void *buffer, unsigned size) {
   if (fd == 1) {
     // STDOUT 
     // todo: maybe need to break up large buffers
+    lock_acquire(&temporary);
     putbuf(buffer, size);
-    return size;
+    int result = size;
+    lock_release(&temporary);
+    return result;
   }
   struct file* result = find_in_file_list(fd);
   if (!result) {
     return -1;
-  } 
-  return file_write(result, buffer, size);
+  }
+  lock_acquire(&temporary);
+  int result_ = file_write(result, buffer, size);
+  lock_release(&temporary);
+  return result_;
 }
 
 void seek (int fd, unsigned position) {
@@ -219,7 +243,9 @@ void seek (int fd, unsigned position) {
   if (!result) {
     return;
   } 
+  lock_acquire(&temporary);
   file_seek(result, position);
+  lock_release(&temporary);
 }
 
 unsigned tell(int fd) {
@@ -227,7 +253,10 @@ unsigned tell(int fd) {
   if (!result) {
     return -1;
   } 
-  file_tell(result);
+  lock_acquire(&temporary);
+  unsigned result_ = file_tell(result);
+  lock_release(&temporary);
+  return result_;
 }
 
 void close (int fd) {
@@ -235,6 +264,8 @@ void close (int fd) {
   if (!result) {
     return;
   } 
+  lock_acquire(&temporary);
   file_close(result);
+  lock_release(&temporary);
   remove_from_file_list(fd);
 }
