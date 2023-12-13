@@ -17,4 +17,5 @@ int read (int fd, void *buffer, unsigned size);
 void seek (int fd, unsigned position);
 unsigned tell(int fd);
 void close (int fd);
+double compute_e (int n);
 #endif /* userprog/syscall.h */

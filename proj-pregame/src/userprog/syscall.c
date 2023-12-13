@@ -11,6 +11,7 @@
 #include "devices/shutdown.h"
 #include "lib/syscall-nr.h"
 #include "lib/string.h"
+#include "lib/float.h"
 #include "filesys/filesys.h"
 #include "filesys/file.h"
 
@@ -145,6 +146,12 @@ static void syscall_handler(struct intr_frame* f UNUSED) {
       process_exit();
     }
     close(args[1]);
+  } else if (args[0] == SYS_COMPUTE_E) {
+    if (invalid_vaddr((void*)(args + 1))) {
+      add_to_exit_list(-1);
+      process_exit();
+    }
+    f->eax = compute_e(args[1]);
   }
 }
 
@@ -268,4 +275,8 @@ void close (int fd) {
   file_close(result);
   lock_release(&temporary);
   remove_from_file_list(fd);
+}
+
+double compute_e (int n) {
+  return sys_sum_to_e(n);
 }
