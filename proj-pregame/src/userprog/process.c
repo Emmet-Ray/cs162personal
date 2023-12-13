@@ -126,6 +126,7 @@ static void start_process(void* start_process_arg_) {
       } 
       p++;
     }
+
     t->pcb->argc = argc;
     t->pcb->file_name_len = strlen(file_name) + 1;
     t->pcb->argv = (char**)malloc(sizeof(char*) * (argc + 1));
