@@ -4,6 +4,7 @@
 #ifndef __ASSEMBLER__
 /* switch_thread()'s stack frame. */
 struct switch_threads_frame {
+  uint8_t fpu_environment[108]; // for floating point unit
   uint32_t edi;        /*  0: Saved %edi. */
   uint32_t esi;        /*  4: Saved %esi. */
   uint32_t ebp;        /*  8: Saved %ebp. */
@@ -31,7 +32,7 @@ void switch_thunk(void);
 #endif
 
 /* Offsets used by switch.S. */
-#define SWITCH_CUR 20
-#define SWITCH_NEXT 24
+#define SWITCH_CUR (20 + 108)
+#define SWITCH_NEXT (24 + 108)
 
 #endif /* threads/switch.h */

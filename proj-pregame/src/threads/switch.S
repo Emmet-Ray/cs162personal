@@ -27,6 +27,8 @@ switch_threads:
 	pushl %ebp
 	pushl %esi
 	pushl %edi
+	subl $108, %esp  /* for fpu */
+	FSAVE (%esp)
 
 	# Get offsetof (struct thread, stack).
 .globl thread_stack_ofs
@@ -41,6 +43,8 @@ switch_threads:
 	movl (%ecx,%edx,1), %esp
 
 	# Restore caller's register state.
+	FRSTOR (%esp)    /* fpu */
+	addl $108, %esp
 	popl %edi
 	popl %esi
 	popl %ebp

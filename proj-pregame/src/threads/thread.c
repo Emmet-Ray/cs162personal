@@ -205,6 +205,10 @@ tid_t thread_create(const char* name, int priority, thread_func* function, void*
   sf = alloc_frame(t, sizeof *sf);
   sf->eip = switch_entry;
   sf->ebp = 0;
+  uint8_t temporary[108];
+  asm("FSAVE %[temp];" : [temp] "=m" (temporary) : :);
+  asm("FINIT; FSAVE %[env];" : [env] "=m" (sf->fpu_environment) : :);
+  asm("FRSTOR %[temp];" : [temp] "=m" (temporary) : :);
 
   /* Add to run queue. */
   thread_unblock(t);
