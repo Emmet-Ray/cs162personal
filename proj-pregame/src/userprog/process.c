@@ -116,14 +116,15 @@ static void start_process(void* start_process_arg_) {
 
     //TODO: here,for one/many args, we need to cut it to one by one. Otherwise, 'open failed' would happen
     //     store somewhere? process struct member <args> <argv>
-    uint32_t argc = 1; // at least with file name
-    for(char* p = file_name; *p != '\0'; p++) {
-      if (*p == ' ') {
+    uint32_t argc = 0; // at least with file name
+    for (char* p = file_name; *p != '\0'; ) {
+      if (*p != ' ') {
         argc++;
-        while(*p == ' ') {
+        while (*p != '\0' && *p != ' ') {
           p++;
         }
-      }
+      } 
+      p++;
     }
     t->pcb->argc = argc;
     t->pcb->file_name_len = strlen(file_name) + 1;
@@ -134,7 +135,6 @@ static void start_process(void* start_process_arg_) {
          token = strtok_r(NULL, " ", &save_ptr), i++) {
             t->pcb->argv[i] = (char*)malloc(strlen(token) + 1);
             strlcpy(t->pcb->argv[i], token, strlen(token) + 1);
-            //printf("argv[%d] : %s\n", t->pcb->argv[i], i);
          }
     t->pcb->argv[i] = NULL;
     strlcpy(t->pcb->process_name, t->pcb->argv[0], strlen(t->pcb->argv[0]) + 1);
