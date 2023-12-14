@@ -5,8 +5,10 @@
 #include "threads/interrupt.h"
 #include "threads/thread.h"
 #include "threads/vaddr.h"
+#include "threads/palloc.h"
 #include "filesys/filesys.h"
 #include "filesys/file.h"
+#include "userprog/pagedir.h"
 
 static void syscall_handler(struct intr_frame*);
 
@@ -23,8 +25,9 @@ void syscall_exit(int status) {
  */
 static void validate_buffer_in_user_region(const void* buffer, size_t length) {
   uintptr_t delta = PHYS_BASE - buffer;
-  if (!is_user_vaddr(buffer) || length > delta)
+  if (!is_user_vaddr(buffer) || length > delta) {
     syscall_exit(-1);
+  }
 }
 
 /*
@@ -76,6 +79,74 @@ static void syscall_close(int fd) {
   }
 }
 
+static void* sbrk_increase(intptr_t increment) {
+  struct thread* t = thread_current();
+  void* result = (void*) t->heap_end;
+  int num_page = increment/PGSIZE;
+  if (increment % PGSIZE != 0)
+    num_page++;
+  
+  void* temp = palloc_get_multiple(PAL_USER, num_page);
+  if (!temp) {
+    return (void*)-1;
+  }
+  palloc_free_multiple(temp, num_page);
+
+  while (increment > 0) {
+    if (!pagedir_get_page(t->pagedir, (void*) t->heap_end)) {
+      void* kpage = palloc_get_page(PAL_ZERO | PAL_USER);
+      pagedir_set_page(t->pagedir, (void*) pg_round_down((void*)t->heap_end), kpage, true);
+    }
+
+    if (increment >= PGSIZE) {
+      t->heap_end += PGSIZE;
+    } else {
+      t->heap_end += increment;
+    }
+    increment -= PGSIZE;
+  }
+  return result;
+}
+static void* sbrk_decrease(intptr_t decrement) {
+  struct thread* t = thread_current();
+  void* result = (void*) t->heap_end;
+  intptr_t positive = -decrement;
+
+  while (positive > 0) {
+    if (t->heap_end <= t->heap_start) {
+      t->heap_end = t->heap_start;
+      break;
+    }
+
+    if (positive >= PGSIZE)  {
+      void* temp_base = pg_round_down((void*) t->heap_end);
+      pagedir_clear_page(t->pagedir, temp_base);
+      palloc_free_page(pagedir_get_page(t->pagedir, temp_base));
+      t->heap_end -= PGSIZE;
+    } else {
+      void* temp_base = pg_round_down((void*) t->heap_end);
+      t->heap_end -= positive;
+      if (t->heap_end <= (uint32_t)temp_base) {
+        pagedir_clear_page(t->pagedir, temp_base);
+        palloc_free_page(pagedir_get_page(t->pagedir, temp_base));
+      }
+    }
+    positive -= PGSIZE;
+  }
+  return result;
+}
+
+static void* syscall_sbrk(intptr_t increment) {
+  struct thread* t = thread_current();
+  void* result = (void*) t->heap_end;
+  if (increment < 0) {
+    return sbrk_decrease(increment);
+  } else if (increment > 0) {
+    return sbrk_increase(increment);
+  } 
+  return result;
+}
+
 static void syscall_handler(struct intr_frame* f) {
   uint32_t* args = (uint32_t*)f->esp;
   struct thread* t = thread_current();
@@ -109,6 +180,11 @@ static void syscall_handler(struct intr_frame* f) {
     case SYS_CLOSE:
       validate_buffer_in_user_region(&args[1], sizeof(uint32_t));
       syscall_close((int)args[1]);
+      break;
+
+    case SYS_SBRK:
+      validate_buffer_in_user_region(&args[1], sizeof(uint32_t));
+      f->eax = syscall_sbrk((intptr_t)args[1]);
       break;
 
     default:

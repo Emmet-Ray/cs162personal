@@ -198,6 +198,7 @@ static bool load_segment(struct file* file, off_t ofs, uint8_t* upage, uint32_t 
    Returns true if successful, false otherwise. */
 bool load(const char* file_name, void (**eip)(void), void** esp) {
   struct thread* t = thread_current();
+  t->heap_start = t->heap_end = 0;  
   struct Elf32_Ehdr ehdr;
   struct file* file = NULL;
   off_t file_ofs;
@@ -269,6 +270,11 @@ bool load(const char* file_name, void (**eip)(void), void** esp) {
           }
           if (!load_segment(file, file_page, (void*)mem_page, read_bytes, zero_bytes, writable))
             goto done;
+          uint32_t temp = (uint32_t) pg_round_up((void*) (mem_page + read_bytes + zero_bytes));
+          //printf("temp: %p\n", (void*)temp);
+          if (temp > t->heap_start) {
+            t->heap_start = t->heap_end = temp;
+          }
         } else
           goto done;
         break;
