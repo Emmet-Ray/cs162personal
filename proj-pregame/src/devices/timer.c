@@ -19,6 +19,12 @@
 
 static struct list sleep_list;
 
+struct sleep_wait {
+  struct semaphore sleep_sema;
+  int64_t ticks;
+  struct list_elem elem;
+};
+
 /* Number of timer ticks since OS booted. */
 static int64_t ticks;
 
@@ -88,12 +94,11 @@ void timer_sleep(int64_t ticks) {
   if (ticks <= 0)
     return;
 
-  struct thread* t = thread_current();
-  t->ticks = ticks;
-  list_push_back(&sleep_list, &t->sleep_elem);
-  intr_disable();
-  thread_block();
-  intr_enable();
+  struct sleep_wait new;
+  new.ticks = ticks;
+  sema_init(&new.sleep_sema, 0);
+  list_push_back(&sleep_list, &new.elem);
+  sema_down(&new.sleep_sema);
 }
 
 /* Sleeps for approximately MS milliseconds.  Interrupts must be
@@ -144,10 +149,10 @@ static void timer_interrupt(struct intr_frame* args UNUSED) {
 
   struct list_elem* e;
   for (e = list_begin(&sleep_list); e != list_end(&sleep_list); e = list_next(e)) {
-    struct thread* t = list_entry(e, struct thread, sleep_elem);
-    if (--t->ticks == 0) {
+    struct sleep_wait* cur = list_entry(e, struct sleep_wait, elem);
+    if (--cur->ticks == 0) {
       list_remove(e);
-      thread_unblock(t);
+      sema_up(&cur->sleep_sema);
     }
   }
 
