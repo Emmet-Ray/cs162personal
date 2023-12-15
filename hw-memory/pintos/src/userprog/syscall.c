@@ -78,16 +78,18 @@ static void syscall_close(int fd) {
     t->open_file = NULL;
   }
 }
-
+/*
 static void* sbrk_increase(intptr_t increment) {
   struct thread* t = thread_current();
   void* result = (void*) t->heap_end;
   int num_page = increment/PGSIZE;
   if (increment % PGSIZE != 0)
     num_page++;
-  
+  if (pagedir_get_page(t->pagedir, (void*) t->heap_end)) 
+    num_page--;
+
   void* temp = palloc_get_multiple(PAL_USER, num_page);
-  if (!temp) {
+  if (num_page > 0 && !temp) {
     return (void*)-1;
   }
   palloc_free_multiple(temp, num_page);
@@ -97,7 +99,6 @@ static void* sbrk_increase(intptr_t increment) {
       void* kpage = palloc_get_page(PAL_ZERO | PAL_USER);
       pagedir_set_page(t->pagedir, (void*) pg_round_down((void*)t->heap_end), kpage, true);
     }
-
     if (increment >= PGSIZE) {
       t->heap_end += PGSIZE;
     } else {
@@ -105,6 +106,12 @@ static void* sbrk_increase(intptr_t increment) {
     }
     increment -= PGSIZE;
   }
+
+  if (!pagedir_get_page(t->pagedir, (void*) t->heap_end) && t->heap_end > (uint32_t)(pg_round_down((void*)t->heap_end))) {
+    void* kpage = palloc_get_page(PAL_ZERO | PAL_USER);
+    pagedir_set_page(t->pagedir, (void*) pg_round_down((void*)t->heap_end), kpage, true);
+  }
+
   return result;
 }
 static void* sbrk_decrease(intptr_t decrement) {
@@ -133,10 +140,14 @@ static void* sbrk_decrease(intptr_t decrement) {
     }
     positive -= PGSIZE;
   }
+  if (t->heap_end <= t->heap_start) {
+    t->heap_end = t->heap_start;
+  }
   return result;
 }
-
+*/
 static void* syscall_sbrk(intptr_t increment) {
+  /*
   struct thread* t = thread_current();
   void* result = (void*) t->heap_end;
   if (increment < 0) {
@@ -145,7 +156,39 @@ static void* syscall_sbrk(intptr_t increment) {
     return sbrk_increase(increment);
   } 
   return result;
+  */
+  struct thread* t = thread_current();
+  void* brk_ = t->brk;
+  t->brk += increment;
+  if (t->brk > pg_round_up(brk_)) {
+    void* upage;
+    bool fail = false;
+    for (upage = pg_round_up(brk_); upage != pg_round_up(t->brk); upage += PGSIZE) {
+      void* kpage = palloc_get_page(PAL_ZERO | PAL_USER);
+      if (kpage == NULL) {
+        fail = true;
+        break;
+      }
+      pagedir_set_page(t->pagedir, upage, kpage, true);
+    }
+    if (fail) {
+      for (void* pg = pg_round_up(brk_); pg != upage; pg += PGSIZE) {
+        palloc_free_page(pagedir_get_page(t->pagedir, pg));
+        pagedir_clear_page(t->pagedir, pg);
+      }
+      t->brk = brk_;
+      return (void*)-1;
+    }
+  } else if (t->brk <= pg_round_down(brk_)) {
+    for (void* upage = pg_round_down(brk_); upage != pg_round_down(t->brk - 1); upage -= PGSIZE) {
+      palloc_free_page(pagedir_get_page(t->pagedir, upage));
+      pagedir_clear_page(t->pagedir, upage);
+    }
+  }
+  return brk_;
+
 }
+
 
 static void syscall_handler(struct intr_frame* f) {
   uint32_t* args = (uint32_t*)f->esp;

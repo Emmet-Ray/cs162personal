@@ -11,13 +11,11 @@
 
 void* mm_malloc(size_t size) {
   //TODO: Implement malloc
-
   return NULL;
 }
 
 void* mm_realloc(void* ptr, size_t size) {
   //TODO: Implement realloc
-
   return NULL;
 }
 
