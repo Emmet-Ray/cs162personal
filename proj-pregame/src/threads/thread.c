@@ -26,9 +26,7 @@ static struct list fifo_ready_list;
 
 static struct list strict_priority_list;
 
-static bool prio_less_func(const struct list_elem* a, const struct list_elem* b, void* aux); 
-static void check_prio_yield(void);
-static void check_prio_yield(void) {
+void check_prio_yield(void) {
   struct thread* t = thread_current();
   struct list_elem* max_elem = list_max(&strict_priority_list, prio_less_func, NULL);
   struct thread* max_t = list_entry(max_elem, struct thread, elem);
@@ -480,7 +478,7 @@ static struct thread* thread_schedule_fifo(void) {
     return idle_thread;
 }
 
-static bool prio_less_func(const struct list_elem* a, const struct list_elem* b, void* aux) {
+bool prio_less_func(const struct list_elem* a, const struct list_elem* b, void* aux) {
   struct thread* t_a = list_entry(a, struct thread, elem);
   struct thread* t_b = list_entry(b, struct thread, elem);
   return t_a->priority < t_b->priority;
