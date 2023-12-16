@@ -31,7 +31,8 @@ static void check_prio_yield(void);
 static void check_prio_yield(void) {
   struct thread* t = thread_current();
   struct list_elem* max_elem = list_max(&strict_priority_list, prio_less_func, NULL);
-  if (max_elem != &t->elem) 
+  struct thread* max_t = list_entry(max_elem, struct thread, elem);
+  if (max_t->priority > t->priority) 
     thread_yield();
 }
 
