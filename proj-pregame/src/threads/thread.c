@@ -24,6 +24,17 @@
    that are ready to run but not actually running. */
 static struct list fifo_ready_list;
 
+static struct list strict_priority_list;
+
+static bool prio_less_func(const struct list_elem* a, const struct list_elem* b, void* aux); 
+static void check_prio_yield(void);
+static void check_prio_yield(void) {
+  struct thread* t = thread_current();
+  struct list_elem* max_elem = list_max(&strict_priority_list, prio_less_func, NULL);
+  if (max_elem != &t->elem) 
+    thread_yield();
+}
+
 /* List of all processes.  Processes are added to this list
    when they are first scheduled and removed when they exit. */
 static struct list all_list;
@@ -108,6 +119,7 @@ void thread_init(void) {
 
   lock_init(&tid_lock);
   list_init(&fifo_ready_list);
+  list_init(&strict_priority_list);
   list_init(&all_list);
 
   /* Set up a thread structure for the running thread. */
@@ -212,7 +224,8 @@ tid_t thread_create(const char* name, int priority, thread_func* function, void*
 
   /* Add to run queue. */
   thread_unblock(t);
-
+  if (active_sched_policy == SCHED_PRIO)
+    check_prio_yield();
   return tid;
 }
 
@@ -240,6 +253,8 @@ static void thread_enqueue(struct thread* t) {
 
   if (active_sched_policy == SCHED_FIFO)
     list_push_back(&fifo_ready_list, &t->elem);
+  else if (active_sched_policy == SCHED_PRIO) 
+    list_push_back(&strict_priority_list, &t->elem);
   else
     PANIC("Unimplemented scheduling policy value: %d", active_sched_policy);
 }
@@ -332,7 +347,12 @@ void thread_foreach(thread_action_func* func, void* aux) {
 }
 
 /* Sets the current thread's priority to NEW_PRIORITY. */
-void thread_set_priority(int new_priority) { thread_current()->priority = new_priority; }
+void thread_set_priority(int new_priority) { 
+  struct thread* t = thread_current();
+  t->priority = new_priority;
+  if (active_sched_policy == SCHED_PRIO)
+    check_prio_yield();
+}
 
 /* Returns the current thread's priority. */
 int thread_get_priority(void) { return thread_current()->priority; }
@@ -459,9 +479,22 @@ static struct thread* thread_schedule_fifo(void) {
     return idle_thread;
 }
 
+static bool prio_less_func(const struct list_elem* a, const struct list_elem* b, void* aux) {
+  struct thread* t_a = list_entry(a, struct thread, elem);
+  struct thread* t_b = list_entry(b, struct thread, elem);
+  return t_a->priority < t_b->priority;
+}
+
 /* Strict priority scheduler */
 static struct thread* thread_schedule_prio(void) {
-  PANIC("Unimplemented scheduler policy: \"-sched=prio\"");
+  if (!list_empty(&strict_priority_list)) {
+    struct list_elem* max_prio = list_max(&strict_priority_list, prio_less_func, NULL);
+    list_remove(max_prio);
+    return list_entry(max_prio, struct thread, elem);
+  }
+  else
+    return idle_thread;
+  //PANIC("Unimplemented scheduler policy: \"-sched=prio\"");
 }
 
 /* Fair priority scheduler */
