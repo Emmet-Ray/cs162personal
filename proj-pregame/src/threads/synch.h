@@ -59,4 +59,6 @@ void rw_lock_release(struct rw_lock*, bool reader);
    reference guide for more information.*/
 #define barrier() asm volatile("" : : : "memory")
 
+// added helper function
+bool less_func_for_cond_signal(const struct list_elem* a, const struct list_elem* b, void* aux); 
 #endif /* threads/synch.h */
