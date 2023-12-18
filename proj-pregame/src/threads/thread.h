@@ -92,7 +92,12 @@ struct thread {
 
   /* Shared between thread.c and synch.c. */
   struct list_elem elem; /* List element. */
-  /* used for sleep_list in timer.c */ 
+  int donated_priority; // 0 for not donated; > 0 for donated
+  struct thread* donate_to; // the thread i am donating;
+  struct lock* donate_lock;
+  struct thread* current_donator;
+  struct list_elem current_donator_elem;
+  struct list donator_list;
 #ifdef USERPROG
   /* Owned by process.c. */
   struct process* pcb; /* Process control block if this thread is a userprog */
@@ -100,6 +105,12 @@ struct thread {
 
   /* Owned by thread.c. */
   unsigned magic; /* Detects stack overflow. */
+};
+
+struct donator {
+  struct thread* t;
+  struct lock* donate_lock;
+  struct list_elem elem;
 };
 
 /* Types of scheduler that the user can request the kernel
@@ -150,6 +161,11 @@ int thread_get_recent_cpu(void);
 int thread_get_load_avg(void);
 
 // added helper function
+enum aux_type {
+  THREAD,
+  DONATOR,
+};
 bool prio_less_func(const struct list_elem* a, const struct list_elem* b, void* aux); 
 void check_prio_yield(void);
+int get_thread_effective_priority(struct thread* t);
 #endif /* threads/thread.h */

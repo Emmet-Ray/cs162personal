@@ -104,7 +104,7 @@ void sema_up(struct semaphore* sema) {
   old_level = intr_disable();
   if (!list_empty(&sema->waiters)) {
     if (active_sched_policy == SCHED_PRIO) {
-      struct list_elem* max_elem = list_max(&sema->waiters, prio_less_func, NULL);
+      struct list_elem* max_elem = list_max(&sema->waiters, prio_less_func, THREAD);
       struct thread* max_t = list_entry(max_elem, struct thread, elem);
       list_remove(max_elem);
       thread_unblock(max_t);
@@ -188,6 +188,41 @@ void lock_acquire(struct lock* lock) {
   ASSERT(!intr_context());
   ASSERT(!lock_held_by_current_thread(lock));
 
+  // donate priority
+  if (lock->semaphore.value == 0) {
+    // find the holder thread's priority : "effective priority" ?
+    struct thread* holder = lock->holder;
+    int effective_prio = holder->donated_priority ? holder->donated_priority : holder->priority;
+    // if its prio is less than current thread's "effective" prio
+    // then donate i.e. set the holder's priority to mine
+    int current_effective_prio = thread_get_priority();
+
+    //TODO: donator list, need to fix this
+    if (holder->priority < current_effective_prio) {
+      // add to donator list
+      struct donator* dona = palloc_get_page();
+      dona->donate_lock = lock;
+      dona->t = thread_current();
+      list_push_back(&holder->donator_list, &dona->elem);
+
+      holder->current_donator_elem = dona->elem;
+    }
+
+    if (effective_prio < current_effective_prio) {
+      thread_current()->donate_to = holder;
+
+      holder->donated_priority = current_effective_prio;
+      holder->donate_lock = lock;
+      holder->current_donator = thread_current();
+      // nested donation : if the holder also donates to other thread, it should update the donation
+      struct thread* donated = holder->donate_to;
+      while (donated) {
+        donated->donated_priority = current_effective_prio;
+        donated = donated->donate_to;
+      }
+    } 
+
+  }
   sema_down(&lock->semaphore);
   lock->holder = thread_current();
 }
@@ -220,6 +255,16 @@ void lock_release(struct lock* lock) {
   ASSERT(lock_held_by_current_thread(lock));
 
   lock->holder = NULL;
+  // if my priority is donated, set to 0
+  struct thread* t = thread_current();
+  if (lock == t->donate_lock && t->donated_priority) {
+    t->donated_priority = 0;
+    t->donate_lock = NULL;
+    t->current_donator->donate_to = NULL;
+
+    // find next max priority donator
+    // set to my donator
+  }
   sema_up(&lock->semaphore);
 }
 
@@ -334,7 +379,7 @@ void cond_wait(struct condition* cond, struct lock* lock) {
   ASSERT(!intr_context());
   ASSERT(lock_held_by_current_thread(lock));
 
-  waiter.priority = thread_current()->priority;
+  waiter.priority = thread_get_priority();
   sema_init(&waiter.semaphore, 0);
   list_push_back(&cond->waiters, &waiter.elem);
   lock_release(lock);

@@ -26,11 +26,13 @@ static struct list fifo_ready_list;
 
 static struct list strict_priority_list;
 
+int get_thread_effective_priority(struct thread* t) {
+  return t->donated_priority ? t->donated_priority : t->priority;
+}
 void check_prio_yield(void) {
   struct thread* t = thread_current();
-  struct list_elem* max_elem = list_max(&strict_priority_list, prio_less_func, NULL);
-  struct thread* max_t = list_entry(max_elem, struct thread, elem);
-  if (max_t->priority > t->priority) 
+  struct list_elem* max_elem = list_max(&strict_priority_list, prio_less_func, THREAD);
+  if (prio_less_func(&t->elem, max_elem, THREAD)) 
     thread_yield();
 }
 
@@ -348,13 +350,18 @@ void thread_foreach(thread_action_func* func, void* aux) {
 /* Sets the current thread's priority to NEW_PRIORITY. */
 void thread_set_priority(int new_priority) { 
   struct thread* t = thread_current();
+  // can't set until donated_priority is over
   t->priority = new_priority;
   if (active_sched_policy == SCHED_PRIO)
     check_prio_yield();
 }
 
 /* Returns the current thread's priority. */
-int thread_get_priority(void) { return thread_current()->priority; }
+// consider donated priority
+int thread_get_priority(void) { 
+  struct thread* t = thread_current();
+  return t->donated_priority ? t->donated_priority : t->priority;
+}
 
 /* Sets the current thread's nice value to NICE. */
 void thread_set_nice(int nice UNUSED) { /* Not yet implemented. */
@@ -451,6 +458,9 @@ static void init_thread(struct thread* t, const char* name, int priority) {
   strlcpy(t->name, name, sizeof t->name);
   t->stack = (uint8_t*)t + PGSIZE;
   t->priority = priority;
+  t->donated_priority = 0;
+  t->donate_to = NULL;
+  list_init(&t->donator_list);
   t->pcb = NULL;
   t->magic = THREAD_MAGIC;
 
@@ -479,15 +489,25 @@ static struct thread* thread_schedule_fifo(void) {
 }
 
 bool prio_less_func(const struct list_elem* a, const struct list_elem* b, void* aux) {
-  struct thread* t_a = list_entry(a, struct thread, elem);
-  struct thread* t_b = list_entry(b, struct thread, elem);
-  return t_a->priority < t_b->priority;
+  enum aux_type type = (enum aux_type)aux;
+  switch (type) {
+    case THREAD: {
+      struct thread* t_a = list_entry(a, struct thread, elem);
+      struct thread* t_b = list_entry(b, struct thread, elem);
+      return get_thread_effective_priority(t_a) < get_thread_effective_priority(t_b);
+    }
+    case DONATOR: {
+      struct donator* d_a = list_entry(a, struct donator, elem);
+      struct donator* d_b = list_entry(b, struct donator, elem);
+      return get_thread_effective_priority(d_a->t) < get_thread_effective_priority(d_b->t);
+    }
+  }
 }
 
 /* Strict priority scheduler */
 static struct thread* thread_schedule_prio(void) {
   if (!list_empty(&strict_priority_list)) {
-    struct list_elem* max_prio = list_max(&strict_priority_list, prio_less_func, NULL);
+    struct list_elem* max_prio = list_max(&strict_priority_list, prio_less_func, THREAD);
     list_remove(max_prio);
     return list_entry(max_prio, struct thread, elem);
   }
