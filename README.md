@@ -4,5 +4,5 @@ This repository contains the code I wrote when I studyed [UCB cs162-sp23](https:
 
 there are 4 branches :
 - main : home work
-- userProg : project 1-user Prog
-
+- userProg: project 1-user Prog
+- threads:  project 2-threads
