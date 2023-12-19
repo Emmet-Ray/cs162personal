@@ -32,6 +32,9 @@
 #include "threads/interrupt.h"
 #include "threads/thread.h"
 
+bool to_release_lock = false;
+struct lock* lock_to_be_released;
+
 void donate(struct thread* donator, struct thread* holder, struct lock* lock); 
 
 /* Initializes semaphore SEMA to VALUE.  A semaphore is a
@@ -110,6 +113,13 @@ void sema_up(struct semaphore* sema) {
       struct thread* max_t = list_entry(max_elem, struct thread, elem);
       list_remove(max_elem);
       thread_unblock(max_t);
+
+      struct list_elem* e;
+      for (e = list_begin(&sema->waiters); e != list_end(&sema->waiters);
+           e = list_next(e)) {
+          struct thread* cur = list_entry(e, struct thread, elem);
+          donate(cur, max_t, lock_to_be_released);
+      }
 
       sema->value++;
       if (!intr_context())
@@ -257,15 +267,45 @@ void lock_release(struct lock* lock) {
   ASSERT(lock_held_by_current_thread(lock));
 
   lock->holder = NULL;
-  // if my priority is donated, set to 0
+
   struct thread* t = thread_current();
+  // because current thread release the lock,
+  // so who donate on this lock should not continue donating current thread
+  struct list_elem* e;
+  for (e = list_begin(&t->donator_list); e != list_end(&t->donator_list); 
+        ) {
+      struct donator* cur = list_entry(e, struct donator, elem);
+      if (cur->donate_lock == lock) {
+        struct list_elem* temp = e;
+        e = list_next(e);
+        list_remove(temp);
+        continue;
+      }
+      e = list_next(e);
+  }
+
+  // if my priority is donated, set to 0
   if (t->donated_priority && lock == t->current_donator->donate_lock) {
     t->donated_priority = 0;
     t->current_donator->t->donate_to = NULL;
 
+    //list_remove(&t->current_donator->elem);
+    // TODO: this line cause a really weird bug
+    //palloc_free_page(t->current_donator);
+    
+
+    
     // find next max priority donator
     // set to my donator
+    if (!list_empty(&t->donator_list)) {
+      struct list_elem* max_elem = list_max(&t->donator_list, prio_less_func, DONATOR); 
+      struct donator* next_donator = list_entry(max_elem, struct donator, elem);
+      t->donated_priority = get_thread_effective_priority(next_donator->t);
+      t->current_donator = next_donator;
+    }
   }
+    lock_to_be_released = lock;
+  to_release_lock = true;
   sema_up(&lock->semaphore);
 }
 
