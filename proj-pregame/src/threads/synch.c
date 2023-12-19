@@ -32,6 +32,8 @@
 #include "threads/interrupt.h"
 #include "threads/thread.h"
 
+void donate(struct thread* donator, struct thread* holder, struct lock* lock); 
+
 /* Initializes semaphore SEMA to VALUE.  A semaphore is a
    nonnegative integer along with two atomic operators for
    manipulating it:
@@ -175,6 +177,37 @@ void lock_init(struct lock* lock) {
   sema_init(&lock->semaphore, 1);
 }
 
+void donate(struct thread* donator, struct thread* holder, struct lock* lock) {
+  // find the holder thread's priority : "effective priority" ?
+  int effective_prio = get_thread_effective_priority(holder);
+  // if its prio is less than current thread's "effective" prio
+  // then donate i.e. set the holder's priority to mine
+  int current_effective_prio = thread_get_priority();
+
+  struct donator* dona;
+  //TODO: donator list, need to fix this
+  if (holder->priority < current_effective_prio) {
+    // add to donator list
+    dona = palloc_get_page();
+    dona->donate_lock = lock;
+    dona->t = donator;
+    list_push_back(&holder->donator_list, &dona->elem);
+  }
+
+  if (effective_prio < current_effective_prio) {
+    donator->donate_to = holder;
+
+    holder->donated_priority = current_effective_prio;
+    holder->current_donator = dona;
+    // nested donation : if the holder also donates to other thread, it should update the donation
+    struct thread* donated = holder->donate_to;
+    while (donated) {
+      donated->donated_priority = current_effective_prio;
+      donated = donated->donate_to;
+    }
+  } 
+}
+
 /* Acquires LOCK, sleeping until it becomes available if
    necessary.  The lock must not already be held by the current
    thread.
@@ -190,38 +223,7 @@ void lock_acquire(struct lock* lock) {
 
   // donate priority
   if (lock->semaphore.value == 0) {
-    // find the holder thread's priority : "effective priority" ?
-    struct thread* holder = lock->holder;
-    int effective_prio = holder->donated_priority ? holder->donated_priority : holder->priority;
-    // if its prio is less than current thread's "effective" prio
-    // then donate i.e. set the holder's priority to mine
-    int current_effective_prio = thread_get_priority();
-
-    //TODO: donator list, need to fix this
-    if (holder->priority < current_effective_prio) {
-      // add to donator list
-      struct donator* dona = palloc_get_page();
-      dona->donate_lock = lock;
-      dona->t = thread_current();
-      list_push_back(&holder->donator_list, &dona->elem);
-
-      holder->current_donator_elem = dona->elem;
-    }
-
-    if (effective_prio < current_effective_prio) {
-      thread_current()->donate_to = holder;
-
-      holder->donated_priority = current_effective_prio;
-      holder->donate_lock = lock;
-      holder->current_donator = thread_current();
-      // nested donation : if the holder also donates to other thread, it should update the donation
-      struct thread* donated = holder->donate_to;
-      while (donated) {
-        donated->donated_priority = current_effective_prio;
-        donated = donated->donate_to;
-      }
-    } 
-
+    donate(thread_current(), lock->holder, lock);
   }
   sema_down(&lock->semaphore);
   lock->holder = thread_current();
@@ -257,10 +259,9 @@ void lock_release(struct lock* lock) {
   lock->holder = NULL;
   // if my priority is donated, set to 0
   struct thread* t = thread_current();
-  if (lock == t->donate_lock && t->donated_priority) {
+  if (t->donated_priority && lock == t->current_donator->donate_lock) {
     t->donated_priority = 0;
-    t->donate_lock = NULL;
-    t->current_donator->donate_to = NULL;
+    t->current_donator->t->donate_to = NULL;
 
     // find next max priority donator
     // set to my donator

@@ -94,9 +94,7 @@ struct thread {
   struct list_elem elem; /* List element. */
   int donated_priority; // 0 for not donated; > 0 for donated
   struct thread* donate_to; // the thread i am donating;
-  struct lock* donate_lock;
-  struct thread* current_donator;
-  struct list_elem current_donator_elem;
+  struct donator* current_donator;
   struct list donator_list;
 #ifdef USERPROG
   /* Owned by process.c. */
