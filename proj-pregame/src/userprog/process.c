@@ -656,7 +656,9 @@ pid_t get_pid(struct process* p) { return (pid_t)p->main_thread->tid; }
    This function will be implemented in Project 2: Multithreading. For
    now, it does nothing. You may find it necessary to change the
    function signature. */
-bool setup_thread(void (**eip)(void) UNUSED, void** esp UNUSED, struct start_pthread_arg* args) {
+
+
+bool setup_thread(void (**eip)(void) , void** esp , struct start_pthread_arg* args) {
 
   struct thread* t = thread_current();
   uint8_t* kpage;
@@ -665,17 +667,20 @@ bool setup_thread(void (**eip)(void) UNUSED, void** esp UNUSED, struct start_pth
   kpage = palloc_get_page(PAL_USER | PAL_ZERO);
   if (kpage != NULL) {
     int thread_num = t->pcb->thread_num; // used for calculating stack bottom address
-    success = install_page(((uint8_t*)PHYS_BASE) - thread_num * PGSIZE, kpage, true);
+    void* base_addr = ((uint8_t*)PHYS_BASE) - thread_num * PGSIZE;
+    success = install_page(base_addr, kpage, true);
     if (success) {
       process_activate();
       // set up the arguments on the stack
       uint32_t* p = (uint32_t*)(kpage + PGSIZE);
+      // stack align
+      p -= 2;
       // arguments
       *(--p) = args->arg;
       *(--p) = args->tf;
-      // stack align
-      p -= 2;
-      *esp = p;
+      // fake return addr
+      *(--p) = 0;
+      *esp = base_addr + PGSIZE - 20;
     } else {
       palloc_free_page(kpage);
     }
@@ -684,6 +689,8 @@ bool setup_thread(void (**eip)(void) UNUSED, void** esp UNUSED, struct start_pth
   *eip =(void (*)(void))args->sf;
   return success; 
 }
+
+
 
 /* Starts a new thread with a new user stack running SF, which takes
    TF and ARG as arguments on its user stack. This new thread may be
@@ -705,6 +712,7 @@ tid_t pthread_execute(stub_fun sf UNUSED, pthread_fun tf UNUSED, void* arg UNUSE
   args.pcb = thread_current()->pcb;
   tid_t tid = thread_create("user_thread", PRI_DEFAULT, start_pthread, &args);
   sema_down(&args.sema);
+  return args.success ? tid : TID_ERROR;
   return 1; 
 }
 
@@ -732,12 +740,12 @@ static void start_pthread(void* exec_ UNUSED) {
 
   args->success = setup_thread(&if_.eip, &if_.esp, args);
 
-  printf("thread_num: %d\n", args->pcb->thread_num);
-  printf("<> got here!\n");
+  //printf("thread_num: %d\n", args->pcb->thread_num);
+  //printf("<> got here!\n");
   sema_up(&args->sema);
 
   // return to user space
-  //asm volatile("movl %0, %%esp; jmp intr_exit" : : "g"(&if_) : "memory");
+  asm volatile("movl %0, %%esp; jmp intr_exit" : : "g"(&if_) : "memory");
 }
 
 /* Waits for thread with TID to die, if that thread was spawned

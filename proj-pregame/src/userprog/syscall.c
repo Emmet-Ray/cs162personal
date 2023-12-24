@@ -154,12 +154,12 @@ static void syscall_handler(struct intr_frame* f UNUSED) {
     f->eax = compute_e(args[1]);
   } else if (args[0] == SYS_PT_CREATE) {
     // TODO: maybe check the args
-    f->eax = sys_pthread_create(0, 0, 0);
+    f->eax = sys_pthread_create(args[1], args[2], args[3]);
   } else if (args[0] == SYS_PT_JOIN) {
     // TODO: maybe check the args
     f->eax = sys_pthread_join(1);
   } else if (args[0] == SYS_PT_EXIT) {
-
+    sys_pthread_exit();
   }
 }
 
@@ -290,15 +290,12 @@ double compute_e (int n) {
 }
 
 tid_t sys_pthread_create(stub_fun sfun, pthread_fun tfun, const void* arg) {
-  printf("in pthread_create syscall\n");
   return pthread_execute(sfun, tfun, arg);
-  return 1;
 }
 tid_t sys_pthread_join(tid_t tid) {
-  printf("in pthread_join syscall\n");
   return 1;
 }
 void sys_pthread_exit(void) {
-  printf("in pthread_exit syscall\n");
+  thread_exit();
   return;
 }
