@@ -96,6 +96,7 @@ struct thread {
   struct thread* donate_to; // the thread i am donating;
   struct donator* current_donator;
   struct list donator_list;
+  struct list_elem pthread_elem;
 #ifdef USERPROG
   /* Owned by process.c. */
   struct process* pcb; /* Process control block if this thread is a userprog */

@@ -34,6 +34,8 @@ struct process {
   int next_fd;          // used for file operation
   struct list file_list;
   struct file* myself; // used for deny_write executable file
+  struct list threads;
+  uint32_t thread_num;
 };
 
 // temporary : global lock for file operation syscall
@@ -73,10 +75,13 @@ struct syn_load {
 
 // 
 struct start_pthread_arg {
+  struct semaphore sema;
+  bool success;
   stub_fun sf;
   pthread_fun tf;
   void* arg;
-}
+  struct process* pcb;
+};
 
 
 void userprog_init(void);
