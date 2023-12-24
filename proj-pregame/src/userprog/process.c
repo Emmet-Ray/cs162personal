@@ -713,7 +713,6 @@ tid_t pthread_execute(stub_fun sf UNUSED, pthread_fun tf UNUSED, void* arg UNUSE
   tid_t tid = thread_create("user_thread", PRI_DEFAULT, start_pthread, &args);
   sema_down(&args.sema);
   return args.success ? tid : TID_ERROR;
-  return 1; 
 }
 
 /* A thread function that creates a new user thread and starts it
@@ -766,7 +765,9 @@ tid_t pthread_join(tid_t tid UNUSED) { return -1; }
 
    This function will be implemented in Project 2: Multithreading. For
    now, it does nothing. */
-void pthread_exit(void) {}
+void pthread_exit(void) {
+  thread_exit();
+}
 
 /* Only to be used when the main thread explicitly calls pthread_exit.
    The main thread should wait on all threads in the process to

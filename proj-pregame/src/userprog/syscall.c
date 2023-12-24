@@ -296,6 +296,6 @@ tid_t sys_pthread_join(tid_t tid) {
   return 1;
 }
 void sys_pthread_exit(void) {
-  thread_exit();
+  pthread_exit();
   return;
 }
