@@ -71,6 +71,13 @@ struct syn_load {
   char* file_name;
 };
 
+// 
+struct start_pthread_arg {
+  stub_fun sf;
+  pthread_fun tf;
+  void* arg;
+}
+
 
 void userprog_init(void);
 

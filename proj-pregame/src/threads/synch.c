@@ -114,11 +114,13 @@ void sema_up(struct semaphore* sema) {
       list_remove(max_elem);
       thread_unblock(max_t);
 
-      struct list_elem* e;
-      for (e = list_begin(&sema->waiters); e != list_end(&sema->waiters);
-           e = list_next(e)) {
-          struct thread* cur = list_entry(e, struct thread, elem);
-          donate(cur, max_t, lock_to_be_released);
+      if (to_release_lock) {
+        struct list_elem* e;
+        for (e = list_begin(&sema->waiters); e != list_end(&sema->waiters);
+            e = list_next(e)) {
+            struct thread* cur = list_entry(e, struct thread, elem);
+            donate(cur, max_t, lock_to_be_released);
+        }
       }
 
       sema->value++;
@@ -289,11 +291,8 @@ void lock_release(struct lock* lock) {
     t->donated_priority = 0;
     t->current_donator->t->donate_to = NULL;
 
-    //list_remove(&t->current_donator->elem);
     // TODO: this line cause a really weird bug
     //palloc_free_page(t->current_donator);
-    
-
     
     // find next max priority donator
     // set to my donator
@@ -304,7 +303,7 @@ void lock_release(struct lock* lock) {
       t->current_donator = next_donator;
     }
   }
-    lock_to_be_released = lock;
+  lock_to_be_released = lock;
   to_release_lock = true;
   sema_up(&lock->semaphore);
 }
